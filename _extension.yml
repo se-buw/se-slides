@@ -1,0 +1,29 @@
+title: SE Slides
+author: Software Engineering Group, Bauhaus-Universität Weimar
+version: 1.0.0
+quarto-required: ">=1.6.0"
+contributes:
+  shortcodes:
+    - shortcodes.lua
+  formats:
+    # Used in a course as   format: se-slides-revealjs
+    revealjs:
+      theme: [default, theme/se.scss]
+      filters:
+        - se-slides.lua
+      width: 1280
+      height: 720
+      margin: 0.06
+      slide-number: c/t
+      hash: true
+      transition: none
+      background-transition: none
+      code-line-numbers: true
+      code-copy: true
+      highlight-style: a11y
+      pdf-separate-fragments: false
+      pdf-max-pages-per-slide: 1
+      preview-links: false
+      menu: false
+      mermaid:
+        theme: neutral

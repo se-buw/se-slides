@@ -1,0 +1,115 @@
+/* Fonts (SIL Open Font License, see fonts/*-OFL.txt) */
+@font-face { font-family: "Jost"; src: url("fonts/Jost.ttf") format("truetype"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono.ttf") format("truetype"); font-weight: 100 800; font-display: swap; }
+
+/* Listings and their action bar */
+.reveal .listing { margin: 0.4em 0; }
+.reveal .listing pre { margin-bottom: 0; }
+.reveal .code-actions {
+  display: flex;
+  gap: 0.6em;
+  align-items: center;
+  justify-content: flex-end;
+  font-size: 0.42em;
+  margin-top: 0.15em;
+  color: var(--course-muted, #555);
+}
+.reveal .code-actions .code-file {
+  margin-right: auto;
+  font-family: var(--r-code-font, monospace);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reveal .code-actions > * { flex-shrink: 0; white-space: nowrap; }
+.reveal .code-actions > .code-file { flex-shrink: 1; }
+.reveal .code-actions button {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--course-accent, #1d4e89);
+  padding: 0.1em 0.5em;
+}
+.reveal .code-actions .code-badge {
+  background: var(--course-accent, #1d4e89);
+  color: #fff;
+  border-radius: 3px;
+  padding: 0.1em 0.5em;
+}
+
+/* Generated program output */
+.reveal pre.output, .reveal div.sourceCode.output, .reveal .output pre {
+  background: var(--course-output-bg, #f3f3f0);
+}
+.reveal pre.output code { color: var(--course-output-fg, #222); }
+
+/* QR codes */
+.reveal .qr-box { display: inline-flex; flex-direction: column; align-items: center; gap: 0.2em; }
+.reveal .qr-box .qr img, .reveal .qr-box .qr canvas { display: block; }
+.reveal .qr-link { font-size: 0.5em; }
+
+/* Drafting aid */
+.reveal .todo {
+  border: 3px dashed #b3261e;
+  color: #b3261e;
+  padding: 0.3em 0.6em;
+  font-size: 0.6em;
+}
+
+/* Image credits slide */
+.reveal .slides section.credits li, .reveal h2.credits + ul li { font-size: 0.5em; }
+
+/* In PDF export, buttons are useless: keep only the file label */
+html.print-pdf .reveal .code-actions button { display: none; }
+@media print { .reveal .code-actions button { display: none; } }
+
+/* No programming ligatures: students must see the characters they type (!=, <=, ==) */
+.reveal pre, .reveal code, .reveal kbd, .reveal samp {
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+}
+.reveal pre.output, .reveal pre.output code, .reveal div.output pre {
+  font-family: var(--r-code-font, "JetBrains Mono", monospace);
+}
+
+/* Mermaid diagrams: use the available width of their column */
+.reveal .cell-output-display svg, .reveal .mermaid svg, .reveal pre.mermaid-js + div svg {
+  max-width: 100% !important;
+  width: 100%;
+  height: auto;
+  max-height: 540px;
+}
+
+/* Layout checks (see se-slides.js) */
+.reveal .course-overflow { outline: 4px dashed #b3261e; outline-offset: -4px; }
+.reveal .course-overflow-label {
+  position: absolute; right: 8px; top: 8px; z-index: 50;
+  background: #b3261e; color: #fff; font: 600 14px/1.4 sans-serif; padding: 2px 8px;
+}
+
+/* Element in the top right corner of a slide (next to the title), e.g. a QR code: [..]{.corner} */
+.reveal .slides section .corner { position: absolute; right: 0; top: 0; }
+
+/* Link back to the list of lectures (se-slides.js) */
+.reveal .course-home {
+  position: absolute; left: 12px; bottom: 8px; z-index: 30;
+  font: 14px/1.2 "Jost", sans-serif; color: var(--course-muted, #555); text-decoration: none;
+}
+.reveal .course-home:hover { color: var(--course-accent, #1d4e89); text-decoration: underline; }
+
+/* Group logo on the title slide (brand/logo_se.png) */
+.reveal .slides section#title-slide::after {
+  content: "";
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 300px;
+  height: 300px;
+  background: url("brand/logo_se.png") center / contain no-repeat;
+}
+.reveal .slides section#title-slide .quarto-title-author,
+.reveal .slides section#title-slide .quarto-title-author-name { padding-left: 0; margin-left: 0; }

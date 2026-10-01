@@ -1,0 +1,16 @@
+{
+  // Every lecture folder is a source root. The build keeps this list up to date.
+  "java.project.sourcePaths": [
+    "code/01-example"
+  ],
+  "java.project.outputPath": "_build/vscode-bin",
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "files.exclude": {
+    "_build": true,
+    "_site": true,
+    ".quarto": true
+  },
+  "files.associations": {
+    "*.jsh": "java"
+  }
+}

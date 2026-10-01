@@ -1,0 +1,14 @@
+# Semester data used in the slides via {{< var key >}}.
+# Update once per semester. Never put passwords or access codes here.
+course:
+  title: "__COURSE_TITLE__"
+semester:
+  name: "Winter 2026/27"
+  lecture: "Monday 11:00–12:30, room ..."
+  tutorial: "Friday 13:30–15:00, room ..."
+lecturer:
+  name: "Prof. Dr. Jan Oliver Ringert"
+  email: "jan.ringert@uni-weimar.de"
+java:
+  version: "25"
+quiz: "https://partici.fi/00000000"

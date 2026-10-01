@@ -1,0 +1,75 @@
+/*-- scss:defaults --*/
+
+// Bauhaus-inspired palette. Text colours meet WCAG AA on white;
+// yellow is used for decoration only, never for text.
+$course-red: #b3261e;     // 6.5:1 on white
+$course-blue: #1d4e89;    // 8.6:1 on white
+$course-yellow: #f2c200;  // decoration only
+$course-ink: #1a1a1a;
+$course-muted: #555555;   // 7.5:1 on white
+
+$body-bg: #ffffff;
+$body-color: $course-ink;
+$link-color: $course-blue;
+$presentation-heading-color: $course-ink;
+$presentation-heading-font: "Jost", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+$presentation-heading-font-weight: 600;
+$font-family-sans-serif: "Jost", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+$font-family-monospace: "JetBrains Mono", "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+
+// 36px base on a 1280x720 canvas; code at 0.58em ≈ 21px (minimum for a lecture hall)
+$presentation-font-size-root: 36px;
+$presentation-h2-font-size: 1.45em;
+$code-block-font-size: 0.58em;
+$code-block-bg: #f7f7f5;
+$code-block-border-color: #d9d9d4;
+$presentation-line-height: 1.35;
+
+/*-- scss:rules --*/
+
+:root {
+  --course-accent: #{$course-blue};
+  --course-muted: #{$course-muted};
+  --course-output-bg: #f1f4f8;
+  --course-output-fg: #1a1a1a;
+}
+
+.reveal .slides section h2 {
+  letter-spacing: -0.01em;
+}
+
+// Title slide: text on the left, logo on the right (logo: se-slides.css)
+.reveal .slides section#title-slide {
+  text-align: left;
+  .title { font-size: 2.2em; max-width: 68%; }
+  .subtitle { color: $course-muted; max-width: 68%; }
+  .quarto-title-authors { justify-content: flex-start; }
+}
+
+.reveal ul li::marker { color: $course-red; }
+
+// Program output: no line numbers, lighter background
+.reveal div.sourceCode.output pre, .reveal pre.output {
+  background: var(--course-output-bg);
+  border-left: 0;
+}
+
+.reveal table { font-size: 0.72em; }
+.reveal table th { border-bottom: 2px solid $course-ink; }
+
+// callout-like boxes
+.reveal .tip, .reveal .pitfall, .reveal .java25 {
+  border-radius: 4px;
+  padding: 0.35em 0.7em;
+  margin: 0.5em 0;
+  font-size: 0.8em;
+}
+.reveal .tip     { background: #eaf1f9; }
+.reveal .pitfall { background: #fbecea; }
+.reveal .java25  { background: #fdf6d8; }
+.reveal .tip::before     { content: "Tip  "; font-weight: 600; color: $course-blue; }
+.reveal .pitfall::before { content: "Pitfall  "; font-weight: 600; color: $course-red; }
+.reveal .java25::before  { content: "Java 25  "; font-weight: 600; }
+
+.reveal .footer { font-size: 0.4em; color: $course-muted; }
+.reveal .slide-number { font-size: 0.5em; background: transparent; color: $course-muted; }

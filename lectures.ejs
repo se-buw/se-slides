@@ -1,0 +1,13 @@
+<table class="table">
+<thead><tr><th>Lecture</th><th>Topics</th><th>PDF</th></tr></thead>
+<tbody>
+<% for (const item of items) { %>
+<% const name = item.path.split('/').pop().replace(/\.html$/, ''); %>
+<tr>
+  <td><a href="<%- item.path %>"><%= item.title %></a></td>
+  <td><%= item.subtitle || '' %></td>
+  <td><a href="pdf/<%- name %>.pdf">PDF</a></td>
+</tr>
+<% } %>
+</tbody>
+</table>

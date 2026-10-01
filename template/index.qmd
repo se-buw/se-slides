@@ -1,0 +1,15 @@
+---
+title: "{{< var course.title >}}"
+subtitle: "{{< var semester.name >}} · Bauhaus-Universität Weimar"
+listing:
+  id: lectures
+  contents: "lectures/[0-9]*.qmd"
+  sort: filename
+  template: _extensions/se-slides/lectures.ejs
+---
+
+All slides as HTML (open in the browser; code listings have copy and "Open in VS Code" buttons) and PDF.
+Example code: folder `code/` of the course repository.
+
+::: {#lectures}
+:::

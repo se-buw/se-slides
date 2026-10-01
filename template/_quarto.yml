@@ -1,0 +1,22 @@
+project:
+  type: website
+  output-dir: _site
+  render:
+    - index.qmd
+    - "lectures/[0-9]*.qmd"
+  # compiles and runs all code in code/ before rendering
+  pre-render: _extensions/se-slides/tools/prerender.ts
+
+website:
+  title: "__COURSE_TITLE__"
+  favicon: _extensions/se-slides/brand/logo_se.ico
+
+author: "{{< var lecturer.name >}}"
+
+# Set when the repository is on GitHub; enables "web" links next to listings.
+# repo-url: https://github.com/se-buw/__REPO__
+
+format:
+  # Slide format of the se-slides extension; add course-specific options here.
+  se-slides-revealjs:
+    footer: "__COURSE_TITLE__ · {{< var semester.name >}}"
