@@ -1,0 +1,5 @@
+# LF everywhere: build.sh and the tools also run on Linux (CI)
+* text=auto eol=lf
+*.ttf binary
+*.png binary
+*.ico binary
