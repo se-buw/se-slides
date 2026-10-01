@@ -20,7 +20,7 @@ $template = Join-Path (Split-Path $PSScriptRoot -Parent) 'template'
 
 New-Item -ItemType Directory -Force $Path | Out-Null
 Copy-Item -Recurse -Force (Join-Path $template '*') $Path
-foreach ($hidden in @('.gitignore', '.gitattributes', '.vscode', '.github')) {
+foreach ($hidden in @('.gitignore', '.gitattributes', '.github')) {
   Copy-Item -Recurse -Force (Join-Path $template $hidden) $Path
 }
 Get-ChildItem $Path -Recurse -File | Where-Object { $_.Extension -in '.yml', '.md', '.qmd', '.json' } | ForEach-Object {

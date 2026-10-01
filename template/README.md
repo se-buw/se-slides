@@ -10,6 +10,8 @@ git clone --recurse-submodules https://github.com/se-buw/__REPO__.git
 ./_extensions/se-slides/tools/bootstrap.ps1     # once per computer: Quarto and JDK 25
 ```
 
+In VS Code, open `course.code-workspace` (created by the first build).
+
 ## Build
 
 ```powershell
