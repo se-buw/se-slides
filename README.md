@@ -197,7 +197,8 @@ template/                 skeleton of a new course
 ## Changing se-slides
 
 Edit inside any course checkout (`_extensions/se-slides` is a normal Git repository), test with that
-course, commit and push from there. Other courses pick up the change with
+course, commit and push from there. A submodule is checked out on a detached HEAD, so first run
+`git -C _extensions/se-slides switch main` (and `git pull`), otherwise the commits are on no branch. Other courses pick up the change with
 `git submodule update --remote _extensions/se-slides`. Bump `version` in `_extension.yml` for
 noticeable changes.
 
