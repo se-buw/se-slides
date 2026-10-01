@@ -135,16 +135,29 @@ if ($Preview) {
   exit $LASTEXITCODE
 }
 
-& $quarto render @targets
-if ($LASTEXITCODE) { exit $LASTEXITCODE }
+# Quarto 1.10 fails on a second explicitly named file in a website project
+# ("withBinaryFile: does not exist"), so named lectures are rendered one by one.
+if ($targets.Count -le 1) {
+  & $quarto render @targets
+  if ($LASTEXITCODE) { exit $LASTEXITCODE }
+} else {
+  foreach ($t in $targets) {
+    & $quarto render $t
+    if ($LASTEXITCODE) { exit $LASTEXITCODE }
+  }
+}
 
 if ($Pdf -or $Moodle) { Export-Pdf $targets }
 
 if ($Moodle) {
   # Self-contained HTML files without the local VS Code path
   $env:COURSE_VSCODE_ROOT = ''
-  & $quarto render @targets --output-dir _build/moodle -M embed-resources:true
-  if ($LASTEXITCODE) { exit $LASTEXITCODE }
+  $moodleTargets = if ($targets.Count) { $targets } else { @($null) }
+  foreach ($t in $moodleTargets) {
+    if ($t) { & $quarto render $t --output-dir _build/moodle -M embed-resources:true }
+    else { & $quarto render --output-dir _build/moodle -M embed-resources:true }
+    if ($LASTEXITCODE) { exit $LASTEXITCODE }
+  }
   New-Item -ItemType Directory -Force dist | Out-Null
   $zip = "dist/moodle-$(Get-Date -Format yyyy-MM-dd).zip"
   $staging = '_build/moodle-bundle'

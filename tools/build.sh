@@ -19,7 +19,12 @@ cache="${SE_SLIDES_HOME:-$HOME/.cache/se-slides}"
 quarto=quarto
 [ -x "$cache/quarto/bin/quarto" ] && quarto="$cache/quarto/bin/quarto"
 
-"$quarto" render "${targets[@]}"
+# Quarto 1.10 fails on a second explicitly named file in a website project: render one by one
+if [ ${#targets[@]} -le 1 ]; then
+  "$quarto" render "${targets[@]}"
+else
+  for t in "${targets[@]}"; do "$quarto" render "$t"; done
+fi
 
 if [ "$pdf" = 1 ]; then
   browser="${COURSE_BROWSER:-$(command -v google-chrome || command -v chromium || command -v chromium-browser)}"
