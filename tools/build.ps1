@@ -35,6 +35,10 @@ function Find-Quarto {
 
 function Find-Browser {
   if ($env:COURSE_BROWSER) { return $env:COURSE_BROWSER }
+  # Preferred: the pinned chrome-headless-shell from bootstrap.ps1. It is made for scripted
+  # printing and independent of the browser you use (updates, profiles, policies).
+  $shell = Join-Path $ToolCache 'chrome-headless-shell/chrome-headless-shell.exe'
+  if (Test-Path $shell) { return $shell }
   foreach ($p in @(
       "$env:ProgramFiles/Google/Chrome/Application/chrome.exe",
       "${env:ProgramFiles(x86)}/Google/Chrome/Application/chrome.exe",
@@ -42,7 +46,7 @@ function Find-Browser {
       "$env:ProgramFiles/Microsoft/Edge/Application/msedge.exe")) {
     if (Test-Path $p) { return $p }
   }
-  throw 'No Chrome or Edge found for PDF export. Set COURSE_BROWSER.'
+  throw "No browser for PDF export. Run $PSScriptRoot/bootstrap.ps1 or set COURSE_BROWSER."
 }
 
 function Resolve-Lectures([string[]]$names) {
@@ -68,10 +72,17 @@ function Export-Pdf([string[]]$targets) {
     $html = (Resolve-Path "_site/lectures/$d.html").Path -replace '\\', '/'
     $pdf = Join-Path $Root "_site/pdf/$d.pdf"
     Write-Host "PDF  $d"
-    & $browser --headless=new --disable-gpu "--user-data-dir=$profileDir" --no-pdf-header-footer `
-      --run-all-compositor-stages-before-draw --virtual-time-budget=30000 `
-      "--print-to-pdf=$pdf" "file:///$html`?print-pdf" 2>$null | Out-Null
-    if (-not (Test-Path $pdf)) { throw "PDF export failed for $d" }
+    Remove-Item $pdf -ErrorAction SilentlyContinue
+    $chromeArgs = @('--disable-gpu', "--user-data-dir=$profileDir", '--no-pdf-header-footer',
+      '--run-all-compositor-stages-before-draw', '--virtual-time-budget=30000',
+      "--print-to-pdf=$pdf", "file:///$html`?print-pdf")
+    if ($browser -notmatch 'chrome-headless-shell') { $chromeArgs = @('--headless=new') + $chromeArgs }
+    # Start-Process does not quote: quote arguments with spaces (course folders with spaces)
+    $chromeArgs = $chromeArgs | ForEach-Object { if ($_ -match ' ') { '"' + $_ + '"' } else { $_ } }
+    # a browser that hangs must not block a nightly build
+    $p = Start-Process -FilePath $browser -ArgumentList $chromeArgs -PassThru -NoNewWindow -RedirectStandardError "$profileDir.log"
+    if (-not $p.WaitForExit(120000)) { Stop-Process -Id $p.Id -Force; throw "PDF export of $d timed out ($browser)" }
+    if (-not (Test-Path $pdf)) { throw "PDF export failed for $d ($browser)" }
   }
 }
 

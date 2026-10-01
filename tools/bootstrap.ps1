@@ -7,6 +7,7 @@
 $ErrorActionPreference = 'Stop'
 $QuartoVersion = '1.10.18'   # update deliberately, then test a full build of each course
 $JdkFeature = 25             # latest Temurin 25.x (security updates within the LTS line)
+$ChromeChannel = 'Stable'    # chrome-headless-shell for PDF export (Chrome for Testing)
 
 $Tools = if ($env:SE_SLIDES_HOME) { $env:SE_SLIDES_HOME } else { Join-Path $env:LOCALAPPDATA 'se-slides' }
 New-Item -ItemType Directory -Force $Tools | Out-Null
@@ -34,6 +35,12 @@ if (-not (Test-Path $quarto) -or ((& $quarto --version) -ne $QuartoVersion)) {
 $java = Join-Path $Tools 'jdk/bin/java.exe'
 if (-not (Test-Path $java)) {
   Get-Zip "https://api.adoptium.net/v3/binary/latest/$JdkFeature/ga/windows/x64/jdk/hotspot/normal/eclipse" (Join-Path $Tools 'jdk')
+}
+$shell = Join-Path $Tools 'chrome-headless-shell/chrome-headless-shell.exe'
+if (-not (Test-Path $shell)) {
+  $versions = Invoke-RestMethod 'https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json'
+  $url = ($versions.channels.$ChromeChannel.downloads.'chrome-headless-shell' | Where-Object platform -eq 'win64').url
+  Get-Zip $url (Join-Path $Tools 'chrome-headless-shell')
 }
 Write-Host "Tools in $Tools"
 & $quarto --version
