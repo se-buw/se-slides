@@ -319,7 +319,10 @@ public class BuildCode {
                                 .append(d.getMessage(Locale.ENGLISH).replace("\n", "\n|  ")).append('\n'));
                     } else if (ev.exception() != null) {
                         failures++;
-                        transcript.append("|  Exception ").append(ev.exception().getClass().getName());
+                        // user exceptions arrive wrapped in EvalException; show the real class like jshell does
+                        String name = ev.exception() instanceof jdk.jshell.EvalException ee
+                                ? ee.getExceptionClassName() : ev.exception().getClass().getName();
+                        transcript.append("|  Exception ").append(name);
                         if (ev.exception().getMessage() != null) transcript.append(": ").append(ev.exception().getMessage());
                         transcript.append('\n');
                     } else if (s instanceof VarSnippet v && ev.value() != null) {
