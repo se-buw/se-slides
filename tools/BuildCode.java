@@ -371,8 +371,7 @@ public class BuildCode {
         StringBuilder folders = new StringBuilder();
         folders.append("    { \"name\": \"slides\", \"path\": \".\" }");
         for (String lecture : allLectures()) {
-            folders.append(",
-    { \"name\": \"").append(lecture).append("\", \"path\": \"code/")
+            folders.append(",\n    { \"name\": \"").append(lecture).append("\", \"path\": \"code/")
                    .append(lecture).append("\" }");
         }
         String json = """
