@@ -80,9 +80,19 @@ function Export-Pdf([string[]]$targets) {
     # Start-Process does not quote: quote arguments with spaces (course folders with spaces)
     $chromeArgs = $chromeArgs | ForEach-Object { if ($_ -match ' ') { '"' + $_ + '"' } else { $_ } }
     # a browser that hangs must not block a nightly build
-    $p = Start-Process -FilePath $browser -ArgumentList $chromeArgs -PassThru -NoNewWindow -RedirectStandardError "$profileDir.log"
-    if (-not $p.WaitForExit(120000)) { Stop-Process -Id $p.Id -Force; throw "PDF export of $d timed out ($browser)" }
-    if (-not (Test-Path $pdf)) { throw "PDF export failed for $d ($browser)" }
+    # The browser occasionally prints before the slides are laid out (a 1-page PDF):
+    # compare the page count with the number of slides and retry once.
+    $expected = (Select-String -Path "lectures/$d.qmd" -Pattern '^#{1,2} ' | Measure-Object).Count
+    for ($attempt = 1; $attempt -le 2; $attempt++) {
+      Remove-Item $pdf -ErrorAction SilentlyContinue
+      $p = Start-Process -FilePath $browser -ArgumentList $chromeArgs -PassThru -NoNewWindow -RedirectStandardError "$profileDir.log"
+      if (-not $p.WaitForExit(120000)) { Stop-Process -Id $p.Id -Force; throw "PDF export of $d timed out ($browser)" }
+      if (-not (Test-Path $pdf)) { throw "PDF export failed for $d ($browser)" }
+      $pages = ([regex]::Matches([IO.File]::ReadAllText($pdf, [Text.Encoding]::Latin1), '/Type /Page[^s]')).Count
+      if ($pages -ge $expected) { break }
+      Write-Host "     only $pages of $expected pages, retrying"
+    }
+    if ($pages -lt $expected) { throw "PDF of $d has only $pages pages, expected at least $expected" }
   }
 }
 
