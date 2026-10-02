@@ -124,10 +124,14 @@
       // wait for the PDF layout and diagrams
       setTimeout(function () {
         const problems = [];
-        let page = 0;
+        const pages = Array.from(document.querySelectorAll(".reveal .slides .pdf-page"));
+        let count = 0;
         document.querySelectorAll(".reveal .slides section").forEach(function (s) {
           if (s.querySelector("section")) return;
-          page++;
+          count++;
+          // page number in the PDF: the print view wraps every slide in a .pdf-page
+          const wrapper = s.closest(".pdf-page");
+          const page = wrapper ? pages.indexOf(wrapper) + 1 : count;
           checkSlide(s);
           const labels = Array.from(s.querySelectorAll(".course-overflow-label"), function (l) { return l.textContent; });
           const extra = [];

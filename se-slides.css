@@ -117,3 +117,7 @@ html.print-pdf .reveal .code-actions button { display: none; }
 }
 .reveal .slides section#title-slide .quarto-title-author,
 .reveal .slides section#title-slide .quarto-title-author-name { padding-left: 0; margin-left: 0; }
+
+/* reveal.js caps code blocks at 400 px; a slide has room for ~560 px below the title.
+   Longer listings are still reported ("listing clipped", "content too long"). */
+.reveal .slides pre code, .reveal .slides pre.sourceCode code { max-height: 560px; }

@@ -53,11 +53,11 @@ end
 local function is_region_start(line) return line:match("^%s*//%s*region%s+([%w%-_]+)%s*$") end
 local function is_region_end(line) return line:match("^%s*//%s*endregion") ~= nil end
 -- build markers (// @run, // @args ..., // @expect-exception, // @expect-error) are not shown
+-- (also with an explanation after them: "// @expect-error: the last snippet throws")
+local markers = { run = true, args = true, ["expect-exception"] = true, ["expect-error"] = true }
 local function is_marker(line)
   local name = line:match("^%s*//%s*@([%w%-]+)")
-  if name == "args" then return true end
-  return (name == "run" or name == "expect-exception" or name == "expect-error")
-    and line:match("^%s*//%s*@[%w%-]+%s*$") ~= nil
+  return name ~= nil and markers[name] == true
 end
 
 local function dedent(lines)
