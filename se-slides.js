@@ -92,6 +92,7 @@
     // Quarto scrolls div.sourceCode, plain blocks scroll the pre: check every level
     section.querySelectorAll("div.sourceCode, pre, pre > code").forEach(function (el) {
       if (el.scrollWidth > el.clientWidth + 2) mark(el.closest("div.sourceCode") || el, section, "code line too wide");
+      if (el.scrollHeight > el.clientHeight + 2) mark(el.closest("div.sourceCode") || el, section, "listing clipped");
     });
   }
 
@@ -122,9 +123,29 @@
     if (printing) {
       // wait for the PDF layout and diagrams
       setTimeout(function () {
+        const problems = [];
+        let page = 0;
         document.querySelectorAll(".reveal .slides section").forEach(function (s) {
-          if (!s.querySelector("section")) checkSlide(s);
+          if (s.querySelector("section")) return;
+          page++;
+          checkSlide(s);
+          const labels = Array.from(s.querySelectorAll(".course-overflow-label"), function (l) { return l.textContent; });
+          const extra = [];
+          s.querySelectorAll("div.sourceCode, pre, pre > code").forEach(function (el) {
+            if (el.scrollWidth > el.clientWidth + 2) extra.push("code line too wide");
+            if (el.scrollHeight > el.clientHeight + 2) extra.push("listing clipped");
+          });
+          labels.concat(extra).filter(function (t, i, a) { return a.indexOf(t) === i; }).forEach(function (t) {
+            const h = s.querySelector("h2, h1");
+            problems.push({ page: page, problem: t, title: h ? h.textContent.trim() : "" });
+          });
         });
+        // read by the build (tools/build.ps1, layout report) from the DOM of the print view
+        const report = document.createElement("div");
+        report.id = "course-layout-report";
+        report.hidden = true;
+        report.textContent = JSON.stringify(problems);
+        document.body.appendChild(report);
       }, 1500);
     } else {
       setTimeout(function () { checkSlide(deck.getCurrentSlide()); }, 300);

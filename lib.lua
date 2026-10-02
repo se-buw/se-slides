@@ -52,6 +52,13 @@ end
 
 local function is_region_start(line) return line:match("^%s*//%s*region%s+([%w%-_]+)%s*$") end
 local function is_region_end(line) return line:match("^%s*//%s*endregion") ~= nil end
+-- build markers (// @run, // @args ..., // @expect-exception, // @expect-error) are not shown
+local function is_marker(line)
+  local name = line:match("^%s*//%s*@([%w%-]+)")
+  if name == "args" then return true end
+  return (name == "run" or name == "expect-exception" or name == "expect-error")
+    and line:match("^%s*//%s*@[%w%-]+%s*$") ~= nil
+end
 
 local function dedent(lines)
   local min = nil
@@ -106,7 +113,11 @@ local function select_lines(lines, snip, range, inc)
         break
       end
     end
-    return lines, 1
+    local a, b = 1, #lines
+    while a <= b and (is_marker(lines[a]) or (a > 1 and not lines[a]:match("%S"))) do a = a + 1 end
+    while b >= a and (is_marker(lines[b]) or not lines[b]:match("%S")) do b = b - 1 end
+    if a == 1 and b == #lines then return lines, 1 end
+    return { table.unpack(lines, a, b) }, a
   end
 end
 
@@ -153,7 +164,7 @@ function M.listing(path, opts)
   attrs["startFrom"] = tostring(first)
   local block = pandoc.CodeBlock(table.concat(shown, "\n"), pandoc.Attr(opts.id or "", classes, attrs))
   if not quarto.doc.is_format("html") then return block end
-  local whole = (first == 1 and last == #lines)
+  local whole = (not opts.snippet and not opts.lines) or (first == 1 and last == #lines)
   return pandoc.Div({ block, action_bar(inc, first, not whole and last or nil) }, { class = "listing" })
 end
 

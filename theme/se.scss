@@ -72,6 +72,8 @@ $presentation-line-height: 1.3;
 .reveal .tip::before     { content: "Tip  "; font-weight: 600; color: $course-blue; }
 .reveal .pitfall::before { content: "Pitfall  "; font-weight: 600; color: $course-red; }
 .reveal .java25::before  { content: "Java 25  "; font-weight: 600; }
+// ::: {.java25 since=16}: a modern feature older than Java 25
+.reveal .java25[data-since]::before { content: "Java " attr(data-since) "  "; }
 
 .reveal .footer { font-size: 0.4em; color: $course-muted; }
 .reveal .slide-number { font-size: 0.5em; background: transparent; color: $course-muted; }

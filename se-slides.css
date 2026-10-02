@@ -82,6 +82,10 @@ html.print-pdf .reveal .code-actions button { display: none; }
   height: auto;
   max-height: 420px; /* width 100% + aspect ratio: small diagrams are not blown up beyond this */
 }
+/* ::: tall around a diagram: up to 560 px, e.g. a class diagram on a slide of its own */
+.reveal .tall .cell-output-display svg, .reveal .tall .mermaid svg, .reveal .tall pre.mermaid-js + div svg {
+  max-height: 560px;
+}
 
 /* Layout checks (see se-slides.js) */
 .reveal .course-overflow { outline: 4px dashed #b3261e; outline-offset: -4px; }

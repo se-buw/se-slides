@@ -33,11 +33,12 @@ import jdk.jshell.VarSnippet;
  *  3. evaluates every *.jsh file with JShell and writes a jshell-style transcript
  *     to _build/out/NN-name/X.jsh.txt,
  *  4. checks that every file in broken/ really fails to compile and writes the
- *     compiler message to _build/out/NN-name/broken/X.txt,
+ *     compiler message to _build/out/NN-name/broken/X.txt (warnings/: compiles with a warning),
  * and finally writes course.code-workspace (one VS Code project per lecture folder).
  *
- * Markers in Java files: "// @run" (run without input), "// @expect-exception"
- * (a non-zero exit is the point of the example). In .jsh files: "// @expect-error".
+ * Markers in Java files: "// @run" (run without input), "// @args a b" (run with these
+ * command-line arguments), "// @expect-exception" (run; a non-zero exit is the point of the
+ * example). In .jsh files: "// @expect-error". Files in warnings/ must compile with a warning.
  *
  * Usage (in the course folder): java _extensions/se-slides/tools/BuildCode.java [lecture ...]
  *        (default: all lectures)
@@ -128,7 +129,12 @@ public class BuildCode {
         Path broken = src.resolve("broken");
         if (Files.isDirectory(broken)) {
             Files.createDirectories(out.resolve("broken"));
-            for (Path f : listFiles(broken, ".java")) checkBroken(f, out.resolve("broken"));
+            for (Path f : listFiles(broken, ".java")) checkBroken(f, out.resolve("broken"), false, classes);
+        }
+        Path warn = src.resolve("warnings");
+        if (Files.isDirectory(warn)) {
+            Files.createDirectories(out.resolve("warnings"));
+            for (Path f : listFiles(warn, ".java")) checkBroken(f, out.resolve("warnings"), true, classes);
         }
     }
 
@@ -145,7 +151,7 @@ public class BuildCode {
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         DiagnosticCollector<JavaFileObject> diags = new DiagnosticCollector<>();
         try (StandardJavaFileManager fm = javac.getStandardFileManager(diags, Locale.ENGLISH, StandardCharsets.UTF_8)) {
-            List<String> options = List.of("--release", String.valueOf(RELEASE), "-Xlint:all",
+            List<String> options = List.of("--release", String.valueOf(RELEASE), "-Xlint:all", "-g",
                     "-encoding", "UTF-8", "-d", classes.toString());
             boolean ok = javac.getTask(null, fm, diags, options, null,
                     fm.getJavaFileObjectsFromPaths(files)).call();
@@ -174,29 +180,46 @@ public class BuildCode {
         return out;
     }
 
-    /** Files in broken/ demonstrate compiler errors: they must fail, and the message is recorded. */
-    static void checkBroken(Path file, Path out) throws IOException {
+    /**
+     * Files in broken/ demonstrate compiler errors: they must fail, and the message is recorded.
+     * Files in warnings/ (warnings = true) must compile with at least one -Xlint:all warning.
+     * The lecture's compiled classes are on the classpath, so the file may use them.
+     */
+    static void checkBroken(Path file, Path out, boolean warnings, Path classes) throws IOException {
         Path tmp = Files.createTempDirectory("broken");
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         DiagnosticCollector<JavaFileObject> diags = new DiagnosticCollector<>();
         boolean ok;
         try (StandardJavaFileManager fm = javac.getStandardFileManager(diags, Locale.ENGLISH, StandardCharsets.UTF_8)) {
-            ok = javac.getTask(null, fm, diags, List.of("--release", String.valueOf(RELEASE), "-d", tmp.toString()),
+            List<String> options = warnings
+                    ? List.of("--release", String.valueOf(RELEASE), "-Xlint:all", "-encoding", "UTF-8",
+                            "-cp", classes.toString(), "-d", tmp.toString())
+                    : List.of("--release", String.valueOf(RELEASE), "-encoding", "UTF-8",
+                            "-cp", classes.toString(), "-d", tmp.toString());
+            ok = javac.getTask(null, fm, diags, options,
                     null, fm.getJavaFileObjectsFromPaths(List.of(file))).call();
         }
         deleteTree(tmp);
         String rel = ROOT.relativize(file).toString().replace('\\', '/');
-        if (ok) {
+        if (!warnings && ok) {
             System.out.println(rel + ": error: expected a compile error, but the file compiles");
             errors++;
             return;
         }
+        if (warnings && !ok) {
+            System.out.println(rel + ": error: files in warnings/ must compile");
+            errors++;
+            return;
+        }
+        Diagnostic.Kind wanted = warnings ? Diagnostic.Kind.WARNING : Diagnostic.Kind.ERROR;
+        String word = warnings ? "warning" : "error";
         StringBuilder sb = new StringBuilder();
         int count = 0;
         for (Diagnostic<? extends JavaFileObject> d : diags.getDiagnostics()) {
-            if (d.getKind() != Diagnostic.Kind.ERROR) continue;
+            Diagnostic.Kind kind = d.getKind() == Diagnostic.Kind.MANDATORY_WARNING ? Diagnostic.Kind.WARNING : d.getKind();
+            if (kind != wanted) continue;
             count++;
-            sb.append(file.getFileName()).append(':').append(d.getLineNumber()).append(": error: ")
+            sb.append(file.getFileName()).append(':').append(d.getLineNumber()).append(": ").append(word).append(": ")
               .append(d.getMessage(Locale.ENGLISH)).append('\n');
             String line = sourceLine(file, (int) d.getLineNumber());
             if (line != null) {
@@ -204,7 +227,12 @@ public class BuildCode {
                 sb.append(" ".repeat((int) Math.max(0, d.getColumnNumber() - 1))).append("^\n");
             }
         }
-        sb.append(count).append(count == 1 ? " error\n" : " errors\n");
+        if (warnings && count == 0) {
+            System.out.println(rel + ": error: expected a compiler warning (-Xlint:all), but there is none");
+            errors++;
+            return;
+        }
+        sb.append(count).append(' ').append(word).append(count == 1 ? "\n" : "s\n");
         Files.writeString(out.resolve(file.getFileName().toString().replaceFirst("\\.java$", ".txt")), sb.toString());
     }
 
@@ -220,18 +248,20 @@ public class BuildCode {
         String name = file.getFileName().toString().replaceFirst("\\.java$", "");
         Path input = file.resolveSibling(name + ".in");
         boolean hasInput = Files.exists(input);
-        if (!hasInput && !text.contains("// @run")) return;
+        List<String> programArgs = argsMarker(text);
+        boolean expectException = text.contains("// @expect-exception");
+        if (!hasInput && !text.contains("// @run") && programArgs == null && !expectException) return;
         if (!text.contains("static void main")) {
             System.out.println(ROOT.relativize(file) + ": error: marked for running but has no main method");
             errors++;
             return;
         }
-        boolean expectException = text.contains("// @expect-exception");
         String java = ProcessHandle.current().info().command().orElse("java");
-        List<String> cmd = List.of(java,
+        List<String> cmd = new ArrayList<>(List.of(java,
                 "-Duser.language=en", "-Duser.country=US", "-Duser.timezone=Europe/Berlin",
                 "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8",
-                "-cp", classes + File.pathSeparator + tools, "EchoRunner", name);
+                "-cp", classes + File.pathSeparator + tools, "EchoRunner", name));
+        if (programArgs != null) cmd.addAll(programArgs);
         ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
         pb.redirectInput(hasInput ? ProcessBuilder.Redirect.from(input.toFile())
                 : ProcessBuilder.Redirect.from(new File(System.getProperty("os.name").startsWith("Windows") ? "NUL" : "/dev/null")));
@@ -258,6 +288,19 @@ public class BuildCode {
         }
     }
 
+    /**
+     * Command-line arguments from a "// @args a b "c d"" marker (double quotes group words),
+     * or null without a marker.
+     */
+    static List<String> argsMarker(String text) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?m)^\\s*//\\s*@args\\b(.*)$").matcher(text);
+        if (!m.find()) return null;
+        List<String> args = new ArrayList<>();
+        java.util.regex.Matcher w = java.util.regex.Pattern.compile("\"([^\"]*)\"|(\\S+)").matcher(m.group(1));
+        while (w.find()) args.add(w.group(1) != null ? w.group(1) : w.group(2));
+        return args;
+    }
+
     // ---------------------------------------------------------------- jshell
 
     static void runJShell(Path file, Path outFile) throws IOException {
@@ -268,6 +311,11 @@ public class BuildCode {
         StringBuilder transcript = new StringBuilder();
         int failures = 0;
         try (JShell js = JShell.builder().out(ps).err(ps).executionEngine("local").build()) {
+            // the imports of jshell's DEFAULT startup, evaluated silently
+            for (String pkg : List.of("java.io", "java.math", "java.net", "java.nio.file", "java.util",
+                    "java.util.concurrent", "java.util.function", "java.util.prefs", "java.util.regex", "java.util.stream")) {
+                js.eval("import " + pkg + ".*;");
+            }
             SourceCodeAnalysis sca = js.sourceCodeAnalysis();
             // Like interactive jshell: read line by line, evaluate as soon as a snippet is complete.
             List<String> snippets = new ArrayList<>();

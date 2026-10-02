@@ -10,7 +10,8 @@
   ./build.ps1 -Pdf -Moodle    # everything, plus dist/moodle-<date>.zip
   ./build.ps1 05 -Preview     # live preview in the browser while editing
   ./build.ps1 -Lenient        # drafting: missing alt texts, credits, regions are warnings
-  ./build.ps1 -Strict         # release: also fail on ::: todo blocks
+  ./build.ps1 -Strict         # release: also fail on ::: todo blocks and layout problems
+  ./build.ps1 05 -Layout      # HTML plus layout report (also part of -Pdf)
 #>
 param(
   [Parameter(Position = 0, ValueFromRemainingArguments = $true)][string[]]$Lecture = @(),
@@ -18,7 +19,8 @@ param(
   [switch]$Moodle,
   [switch]$Preview,
   [switch]$Strict,
-  [switch]$Lenient
+  [switch]$Lenient,
+  [switch]$Layout
 )
 $ErrorActionPreference = 'Stop'
 $Root = (Get-Location).Path
@@ -96,6 +98,39 @@ function Export-Pdf([string[]]$targets) {
   }
 }
 
+# Layout report: opens each deck's print view headless; se-slides.js lists the slides whose
+# content runs into the footer or whose listings are clipped (#course-layout-report in the DOM).
+# Written to _build/layout/<deck>.txt; returns the number of problems.
+function Test-Layout([string[]]$targets) {
+  $browser = Find-Browser
+  $profileDir = Join-Path ([IO.Path]::GetTempPath()) 'se-slides-layout-profile'
+  New-Item -ItemType Directory -Force '_build/layout' | Out-Null
+  $decks = if ($targets.Count) { $targets | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) } } else { All-Decks }
+  $total = 0
+  foreach ($d in $decks) {
+    $html = (Resolve-Path "_site/lectures/$d.html").Path -replace '\\', '/'
+    $dom = Join-Path $Root "_build/layout/$d.dom.html"
+    $chromeArgs = @('--disable-gpu', "--user-data-dir=$profileDir", '--window-size=1280,720',
+      '--run-all-compositor-stages-before-draw', '--virtual-time-budget=30000', '--dump-dom', "file:///$html`?print-pdf")
+    if ($browser -notmatch 'chrome-headless-shell') { $chromeArgs = @('--headless=new') + $chromeArgs }
+    $chromeArgs = $chromeArgs | ForEach-Object { if ($_ -match ' ') { '"' + $_ + '"' } else { $_ } }
+    $p = Start-Process -FilePath $browser -ArgumentList $chromeArgs -PassThru -NoNewWindow -RedirectStandardOutput $dom -RedirectStandardError "$profileDir.log"
+    if (-not $p.WaitForExit(120000)) { Stop-Process -Id $p.Id -Force; throw "Layout check of $d timed out ($browser)" }
+    $m = [regex]::Match([IO.File]::ReadAllText($dom), '<div id="course-layout-report" hidden="">(.*?)</div>')
+    Remove-Item $dom -ErrorAction SilentlyContinue
+    if (-not $m.Success) { Write-Warning "Layout check of $d produced no report"; continue }
+    $problems = @([Net.WebUtility]::HtmlDecode($m.Groups[1].Value) | ConvertFrom-Json)
+    $lines = $problems | ForEach-Object { "slide $($_.page): $($_.problem) :: $($_.title)" }
+    Set-Content -Path "_build/layout/$d.txt" -Value $lines -Encoding utf8
+    if ($problems.Count) {
+      Write-Host "LAYOUT $d - $($problems.Count) problem(s):" -ForegroundColor Yellow
+      $lines | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
+    } else { Write-Host "LAYOUT $d - ok" }
+    $total += $problems.Count
+  }
+  return $total
+}
+
 # index.html of the Moodle bundle: the decks link back to ../index.html
 function Write-MoodleIndex([string]$staging, [string]$courseTitle) {
   $rows = foreach ($f in Get-ChildItem "$staging/html" -Filter '*.html' | Sort-Object Name) {
@@ -158,6 +193,10 @@ if ($targets.Count -le 1) {
 }
 
 if ($Pdf -or $Moodle) { Export-Pdf $targets }
+if ($Pdf -or $Moodle -or $Layout) {
+  $layoutProblems = Test-Layout $targets
+  if ($Strict -and $layoutProblems) { throw "$layoutProblems layout problem(s), see _build/layout/" }
+}
 
 if ($Moodle) {
   # Self-contained HTML files without the local VS Code path
