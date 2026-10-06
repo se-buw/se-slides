@@ -12,6 +12,7 @@
   ./build.ps1 -Lenient        # drafting: missing alt texts, credits, regions are warnings
   ./build.ps1 -Strict         # release: also fail on ::: todo blocks and layout problems
   ./build.ps1 05 -Layout      # HTML plus layout report (also part of -Pdf)
+  ./build.ps1 05 -ShowLayout  # also mark overflowing slides in the browser and PDF
 #>
 param(
   [Parameter(Position = 0, ValueFromRemainingArguments = $true)][string[]]$Lecture = @(),
@@ -20,7 +21,8 @@ param(
   [switch]$Preview,
   [switch]$Strict,
   [switch]$Lenient,
-  [switch]$Layout
+  [switch]$Layout,
+  [switch]$ShowLayout
 )
 $ErrorActionPreference = 'Stop'
 $Root = (Get-Location).Path
@@ -106,9 +108,12 @@ function Test-Layout([string[]]$targets) {
   $profileDir = Join-Path ([IO.Path]::GetTempPath()) 'se-slides-layout-profile'
   New-Item -ItemType Directory -Force '_build/layout' | Out-Null
   $decks = if ($targets.Count) { $targets | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) } } else { All-Decks }
+  # the index page is a deck, too (its lecture list is split across slides)
+  if (Test-Path '_site/index.html') { $decks = @($decks) + 'index' }
   $total = 0
   foreach ($d in $decks) {
-    $html = (Resolve-Path "_site/lectures/$d.html").Path -replace '\\', '/'
+    $file = if ($d -eq 'index') { '_site/index.html' } else { "_site/lectures/$d.html" }
+    $html = (Resolve-Path $file).Path -replace '\\', '/'
     $dom = Join-Path $Root "_build/layout/$d.dom.html"
     $chromeArgs = @('--disable-gpu', "--user-data-dir=$profileDir", '--window-size=1280,720',
       '--run-all-compositor-stages-before-draw', '--virtual-time-budget=30000', '--dump-dom', "file:///$html`?print-pdf")
@@ -172,6 +177,8 @@ $quarto = Find-Quarto
 $targets = @(Resolve-Lectures $Lecture)
 if ($Strict) { $env:COURSE_STRICT = '1' } else { Remove-Item Env:COURSE_STRICT -ErrorAction SilentlyContinue }
 if ($Lenient) { $env:COURSE_LENIENT = '1' } else { Remove-Item Env:COURSE_LENIENT -ErrorAction SilentlyContinue }
+# Visible layout marks (red outline and label) only on request; the layout report does not need them.
+if ($ShowLayout) { $env:COURSE_LAYOUT_MARKS = '1' } else { Remove-Item Env:COURSE_LAYOUT_MARKS -ErrorAction SilentlyContinue }
 # Your local HTML opens files in VS Code from this checkout by default.
 $env:COURSE_VSCODE_ROOT = $Root -replace '\\', '/'
 
@@ -182,25 +189,28 @@ if ($Preview) {
 
 # Quarto 1.10 fails on a second explicitly named file in a website project
 # ("withBinaryFile: does not exist"), so named lectures are rendered one by one.
-if ($targets.Count -le 1) {
-  & $quarto render @targets
+# The index page lists the lectures' titles: render it with them.
+$renderTargets = if ($targets.Count -and (Test-Path 'index.qmd')) { @($targets) + 'index.qmd' } else { $targets }
+if ($renderTargets.Count -le 1) {
+  & $quarto render @renderTargets
   if ($LASTEXITCODE) { exit $LASTEXITCODE }
 } else {
-  foreach ($t in $targets) {
+  foreach ($t in $renderTargets) {
     & $quarto render $t
     if ($LASTEXITCODE) { exit $LASTEXITCODE }
   }
 }
 
 if ($Pdf -or $Moodle) { Export-Pdf $targets }
-if ($Pdf -or $Moodle -or $Layout) {
+if ($Pdf -or $Moodle -or $Layout -or $Strict) {
   $layoutProblems = Test-Layout $targets
   if ($Strict -and $layoutProblems) { throw "$layoutProblems layout problem(s), see _build/layout/" }
 }
 
 if ($Moodle) {
-  # Self-contained HTML files without the local VS Code path
+  # Self-contained HTML files without the local VS Code path and without layout marks
   $env:COURSE_VSCODE_ROOT = ''
+  Remove-Item Env:COURSE_LAYOUT_MARKS -ErrorAction SilentlyContinue
   $moodleTargets = if ($targets.Count) { $targets } else { @($null) }
   foreach ($t in $moodleTargets) {
     if ($t) { & $quarto render $t --output-dir _build/moodle -M embed-resources:true }

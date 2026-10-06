@@ -1,5 +1,5 @@
 # Builds this course with the shared se-slides tools.
-#   ./build.ps1 05 -Preview | ./build.ps1 05 -Pdf | ./build.ps1 -Pdf -Moodle | -Lenient | -Strict
+#   ./build.ps1 05 -Preview | ./build.ps1 05 -Pdf | ./build.ps1 -Pdf -Moodle | -Lenient | -Strict | -ShowLayout
 # Details: _extensions/se-slides/README.md
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot

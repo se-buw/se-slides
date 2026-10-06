@@ -173,6 +173,79 @@ local function credits_slide()
   }
 end
 
+-- Index page: `::: {#lectures}` becomes a table of all lectures (title, subtitle, PDF), read from the
+-- front matter of lectures/[0-9]*.qmd. Long lists continue on further slides; the budget is in
+-- table lines per slide (metadata lectures-per-slide, default 12), a row counts one line per 70
+-- characters of its subtitle, the first slide has 2 lines less for the text above the table.
+local function lecture_entries()
+  local dir = (quarto.project and quarto.project.directory) or "."
+  local ok, names = pcall(pandoc.system.list_directory, dir .. "/lectures")
+  if not ok then return {} end
+  local files = {}
+  for _, n in ipairs(names) do
+    if n:match("^%d.*%.qmd$") then table.insert(files, n) end
+  end
+  table.sort(files)
+  local entries = {}
+  for _, n in ipairs(files) do
+    local f = io.open(dir .. "/lectures/" .. n, "r")
+    local text = f and f:read("a") or ""
+    if f then f:close() end
+    local yaml = text:match("^%-%-%-\r?\n(.-)\r?\n%-%-%-") or ""
+    local meta = pandoc.read("---\n" .. yaml .. "\n---\n", "markdown").meta
+    local name = n:gsub("%.qmd$", "")
+    table.insert(entries, {
+      name = name,
+      title = meta.title and pandoc.utils.stringify(meta.title) or name,
+      subtitle = meta.subtitle and pandoc.utils.stringify(meta.subtitle) or "",
+    })
+  end
+  return entries
+end
+
+local function lecture_table(entries)
+  local function cell(inlines) return { pandoc.Plain(inlines) } end
+  local rows = {}
+  for _, e in ipairs(entries) do
+    table.insert(rows, {
+      cell({ pandoc.Link(e.title, "lectures/" .. e.name .. ".html") }),
+      cell({ pandoc.Str(e.subtitle) }),
+      cell({ pandoc.Link("PDF", "pdf/" .. e.name .. ".pdf") }),
+    })
+  end
+  local simple = pandoc.SimpleTable({}, { pandoc.AlignDefault, pandoc.AlignDefault, pandoc.AlignDefault },
+    { 0.3, 0.6, 0.1 }, { cell({ pandoc.Str("Lecture") }), cell({ pandoc.Str("Topics") }), cell({ pandoc.Str("PDF") }) },
+    rows)
+  return pandoc.utils.from_simple_table(simple)
+end
+
+local function lecture_slides(doc)
+  local at
+  for i, b in ipairs(doc.blocks) do
+    if b.t == "Div" and b.identifier == "lectures" then at = i break end
+  end
+  if not at then return end
+  local budget = tonumber(doc.meta["lectures-per-slide"] and pandoc.utils.stringify(doc.meta["lectures-per-slide"])) or 12
+  local chunks, current, used, limit = {}, {}, 0, budget - 2
+  for _, e in ipairs(lecture_entries()) do
+    local lines = math.max(1, math.ceil(#e.subtitle / 70))
+    if #current > 0 and used + lines > limit then
+      table.insert(chunks, current)
+      current, used, limit = {}, 0, budget
+    end
+    table.insert(current, e)
+    used = used + lines
+  end
+  if #current > 0 then table.insert(chunks, current) end
+  local blocks = {}
+  for i, c in ipairs(chunks) do
+    if i > 1 then table.insert(blocks, pandoc.Header(2, "Lectures (continued)")) end
+    table.insert(blocks, lecture_table(c))
+  end
+  doc.blocks:remove(at)
+  for i = #blocks, 1, -1 do doc.blocks:insert(at, blocks[i]) end
+end
+
 return {
   {
     Meta = function(meta)
@@ -192,6 +265,9 @@ return {
           stylesheets = { "se-slides.css" },
           resources = { "fonts/Jost.ttf", "fonts/JetBrainsMono.ttf", "brand/logo_se.png", "brand/logo_se.ico" },
         })
+        if os.getenv("COURSE_LAYOUT_MARKS") == "1" then
+          quarto.doc.include_text("in-header", '<meta name="course-layout-marks" content="1">')
+        end
         local vroot = os.getenv("COURSE_VSCODE_ROOT")
         if vroot and vroot ~= "" then
           quarto.doc.include_text("in-header",
@@ -201,6 +277,7 @@ return {
       if todo_count > 0 then
         quarto.log.warning("[course] " .. todo_count .. " todo block(s) in " .. quarto.doc.input_file)
       end
+      lecture_slides(doc)
       doc.blocks:extend(credits_slide())
       return doc
     end,

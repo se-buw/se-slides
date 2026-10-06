@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds a course's slides (Linux/macOS/CI). Called by the course's build.sh from the course folder.
-#   build.sh [lecture ...] [--pdf] [--strict] [--lenient]
+#   build.sh [lecture ...] [--pdf] [--strict] [--lenient] [--show-layout]
 set -euo pipefail
 [ -f _quarto.yml ] || { echo "Run this from a course folder (no _quarto.yml in $PWD)"; exit 1; }
 
@@ -11,6 +11,7 @@ for a in "$@"; do
     --pdf) pdf=1 ;;
     --strict) export COURSE_STRICT=1 ;;
     --lenient) export COURSE_LENIENT=1 ;;
+    --show-layout) export COURSE_LAYOUT_MARKS=1 ;;
     *) for f in lectures/"$a".qmd lectures/"$a"-*.qmd; do [ -f "$f" ] && targets+=("$f"); done ;;
   esac
 done
@@ -20,10 +21,12 @@ quarto=quarto
 [ -x "$cache/quarto/bin/quarto" ] && quarto="$cache/quarto/bin/quarto"
 
 # Quarto 1.10 fails on a second explicitly named file in a website project: render one by one
-if [ ${#targets[@]} -le 1 ]; then
-  "$quarto" render "${targets[@]}"
+# The index page lists the lectures' titles: render it with them.
+if [ ${#targets[@]} -eq 0 ]; then
+  "$quarto" render
 else
   for t in "${targets[@]}"; do "$quarto" render "$t"; done
+  if [ -f index.qmd ]; then "$quarto" render index.qmd; fi
 fi
 
 if [ "$pdf" = 1 ]; then

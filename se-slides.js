@@ -61,8 +61,13 @@
   }
 
   // Layout check: content must stay above the footer, listings must not be clipped.
-  // Problems get a red outline and a label, in the browser and in the PDF.
+  // The check always runs in the print view (the build's layout report reads it); outlines and
+  // labels are drawn only in decks built with -ShowLayout (meta course-layout-marks).
   const FOOTER_SPACE = 44; // px of the 720 px slide height reserved for footer/slide number
+
+  function marksOn() {
+    return !!document.querySelector('meta[name="course-layout-marks"]');
+  }
 
   function mark(el, section, text) {
     el.classList.add("course-overflow");
@@ -72,11 +77,16 @@
       label.textContent = text;
       section.appendChild(label);
     }
-    console.warn("[course] " + text + ": " + (section.querySelector("h2, h1") || {}).textContent);
   }
 
-  function checkSlide(section) {
-    if (!section || section.classList.contains("stack")) return;
+  // Returns the problems of one slide as texts; draws them if draw is true.
+  function checkSlide(section, draw) {
+    const problems = [];
+    if (!section || section.classList.contains("stack")) return problems;
+    function found(el, text) {
+      if (problems.indexOf(text) < 0) problems.push(text);
+      if (draw) mark(el, section, text);
+    }
     const deck = window.Reveal;
     const height = deck.getConfig().height;
     const scale = deck.getScale ? deck.getScale() : 1;
@@ -88,12 +98,17 @@
         const r = el.getBoundingClientRect();
         if (r.height > 0) bottom = Math.max(bottom, (r.bottom - top) / scale);
       });
-    if (bottom > height - FOOTER_SPACE) mark(section, section, "content too long (" + Math.round(bottom) + " px)");
+    if (bottom > height - FOOTER_SPACE) found(section, "content too long (" + Math.round(bottom) + " px)");
     // Quarto scrolls div.sourceCode, plain blocks scroll the pre: check every level
     section.querySelectorAll("div.sourceCode, pre, pre > code").forEach(function (el) {
-      if (el.scrollWidth > el.clientWidth + 2) mark(el.closest("div.sourceCode") || el, section, "code line too wide");
-      if (el.scrollHeight > el.clientHeight + 2) mark(el.closest("div.sourceCode") || el, section, "listing clipped");
+      const box = el.closest("div.sourceCode") || el;
+      if (el.scrollWidth > el.clientWidth + 2) found(box, "code line too wide");
+      if (el.scrollHeight > el.clientHeight + 2) found(box, "listing clipped");
     });
+    if (draw && problems.length) {
+      console.warn("[course] " + problems.join(", ") + ": " + (section.querySelector("h2, h1") || {}).textContent);
+    }
+    return problems;
   }
 
   function whenReveal(fn) {
@@ -132,15 +147,8 @@
           // page number in the PDF: the print view wraps every slide in a .pdf-page
           const wrapper = s.closest(".pdf-page");
           const page = wrapper ? pages.indexOf(wrapper) + 1 : count;
-          checkSlide(s);
-          const labels = Array.from(s.querySelectorAll(".course-overflow-label"), function (l) { return l.textContent; });
-          const extra = [];
-          s.querySelectorAll("div.sourceCode, pre, pre > code").forEach(function (el) {
-            if (el.scrollWidth > el.clientWidth + 2) extra.push("code line too wide");
-            if (el.scrollHeight > el.clientHeight + 2) extra.push("listing clipped");
-          });
-          labels.concat(extra).filter(function (t, i, a) { return a.indexOf(t) === i; }).forEach(function (t) {
-            const h = s.querySelector("h2, h1");
+          const h = s.querySelector("h2, h1");
+          checkSlide(s, marksOn()).forEach(function (t) {
             problems.push({ page: page, problem: t, title: h ? h.textContent.trim() : "" });
           });
         });
@@ -152,8 +160,9 @@
         document.body.appendChild(report);
       }, 1500);
     } else {
-      setTimeout(function () { checkSlide(deck.getCurrentSlide()); }, 300);
-      deck.on("slidechanged", function (e) { setTimeout(function () { checkSlide(e.currentSlide); }, 300); });
+      if (!marksOn()) return;
+      setTimeout(function () { checkSlide(deck.getCurrentSlide(), true); }, 300);
+      deck.on("slidechanged", function (e) { setTimeout(function () { checkSlide(e.currentSlide, true); }, 300); });
     }
   });
 })();
