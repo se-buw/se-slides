@@ -87,14 +87,14 @@ function Export-Pdf([string[]]$targets) {
     $chromeArgs = $chromeArgs | ForEach-Object { if ($_ -match ' ') { '"' + $_ + '"' } else { $_ } }
     # a browser that hangs must not block a nightly build
     # The browser occasionally prints before the slides are laid out (a 1-page PDF):
-    # compare the page count with the number of slides and retry once.
+    # compare the page count with the number of slides and retry (up to 4 attempts).
     # headings outside code fences, without hidden slides (they are not printed)
     $expected = 0; $fence = $false
     foreach ($line in Get-Content "lectures/$d.qmd") {
       if ($line -match '^\s*(```|~~~)') { $fence = -not $fence; continue }
       if (-not $fence -and $line -match '^#{1,2} ' -and $line -notmatch 'visibility="hidden"') { $expected++ }
     }
-    for ($attempt = 1; $attempt -le 2; $attempt++) {
+    for ($attempt = 1; $attempt -le 4; $attempt++) {
       Remove-Item $pdf -ErrorAction SilentlyContinue
       $p = Start-Process -FilePath $browser -ArgumentList $chromeArgs -PassThru -NoNewWindow -RedirectStandardError "$profileDir.log"
       if (-not $p.WaitForExit(120000)) { Stop-Process -Id $p.Id -Force; throw "PDF export of $d timed out ($browser)" }
