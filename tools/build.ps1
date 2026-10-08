@@ -86,7 +86,12 @@ function Export-Pdf([string[]]$targets) {
     # a browser that hangs must not block a nightly build
     # The browser occasionally prints before the slides are laid out (a 1-page PDF):
     # compare the page count with the number of slides and retry once.
-    $expected = (Select-String -Path "lectures/$d.qmd" -Pattern '^#{1,2} ' | Measure-Object).Count
+    # headings outside code fences, without hidden slides (they are not printed)
+    $expected = 0; $fence = $false
+    foreach ($line in Get-Content "lectures/$d.qmd") {
+      if ($line -match '^\s*(```|~~~)') { $fence = -not $fence; continue }
+      if (-not $fence -and $line -match '^#{1,2} ' -and $line -notmatch 'visibility="hidden"') { $expected++ }
+    }
     for ($attempt = 1; $attempt -le 2; $attempt++) {
       Remove-Item $pdf -ErrorAction SilentlyContinue
       $p = Start-Process -FilePath $browser -ArgumentList $chromeArgs -PassThru -NoNewWindow -RedirectStandardError "$profileDir.log"

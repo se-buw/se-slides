@@ -203,14 +203,23 @@ local function lecture_entries()
   return entries
 end
 
+-- Links open in a new tab (not in-deck anchors, not mailto:)
+local function new_tab(el)
+  local t = el.target or ""
+  if t == "" or t:sub(1, 1) == "#" or t:match("^mailto:") then return nil end
+  el.attributes.target = "_blank"
+  el.attributes.rel = "noopener noreferrer"
+  return el
+end
+
 local function lecture_table(entries)
   local function cell(inlines) return { pandoc.Plain(inlines) } end
   local rows = {}
   for _, e in ipairs(entries) do
     table.insert(rows, {
-      cell({ pandoc.Link(e.title, "lectures/" .. e.name .. ".html") }),
+      cell({ new_tab(pandoc.Link(e.title, "lectures/" .. e.name .. ".html")) }),
       cell({ pandoc.Str(e.subtitle) }),
-      cell({ pandoc.Link("PDF", "pdf/" .. e.name .. ".pdf") }),
+      cell({ new_tab(pandoc.Link("PDF", "pdf/" .. e.name .. ".pdf")) }),
     })
   end
   local simple = pandoc.SimpleTable({}, { pandoc.AlignDefault, pandoc.AlignDefault, pandoc.AlignDefault },
@@ -255,6 +264,7 @@ return {
   },
   { CodeBlock = CodeBlock, Image = Image },
   { Div = Div },
+  { Link = new_tab },
   {
     Pandoc = function(doc)
       if quarto.doc.is_format("html") then
