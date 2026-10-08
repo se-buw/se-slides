@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds a course's slides (Linux/macOS/CI). Called by the course's build.sh from the course folder.
-#   build.sh [lecture ...] [--pdf] [--strict] [--lenient] [--show-layout]
+#   build.sh [lecture ...] [--pdf] [--strict] [--lenient] [--show-layout] [--clean]
 set -euo pipefail
 [ -f _quarto.yml ] || { echo "Run this from a course folder (no _quarto.yml in $PWD)"; exit 1; }
 
@@ -12,6 +12,7 @@ for a in "$@"; do
     --strict) export COURSE_STRICT=1 ;;
     --lenient) export COURSE_LENIENT=1 ;;
     --show-layout) export COURSE_LAYOUT_MARKS=1 ;;
+    --clean) export COURSE_CLEAN=1 ;;
     *) for f in lectures/"$a".qmd lectures/"$a"-*.qmd; do [ -f "$f" ] && targets+=("$f"); done ;;
   esac
 done

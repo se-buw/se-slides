@@ -2,6 +2,12 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.security.MessageDigest;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,7 +40,13 @@ import jdk.jshell.VarSnippet;
  *     to _build/out/NN-name/X.jsh.txt,
  *  4. checks that every file in broken/ really fails to compile and writes the
  *     compiler message to _build/out/NN-name/broken/X.txt (warnings/: compiles with a warning),
+ *  5. takes screenshots of JavaFX programs (see FxShots.java) if the lecture has a screenshots.txt,
  * and finally writes course.code-workspace (one VS Code project per lecture folder).
+ *
+ * Steps 1 to 4 and 5 run on demand: a lecture is built again only when its code (or this tool) changed
+ * (_build/stamps/NN-name.txt), a screenshot only when its program, the classes it uses or its line in
+ * screenshots.txt changed (images/NN-name/screenshots/screenshots.sha, committed with the images).
+ * COURSE_CLEAN=1 (build.ps1 -Clean) deletes the build output and takes everything again.
  *
  * Markers in Java files: "// @run" (run without input), "// @args a b" (run with these
  * command-line arguments), "// @expect-exception" (run; a non-zero exit is the point of the
@@ -56,6 +68,9 @@ public class BuildCode {
     static final int RELEASE = 25;
     static final int RUN_TIMEOUT_SECONDS = 20;
 
+    static final boolean CLEAN = System.getenv("COURSE_CLEAN") != null;
+    static final boolean STRICT = System.getenv("COURSE_STRICT") != null;
+
     static int errors = 0;
     static int warnings = 0;
 
@@ -69,9 +84,13 @@ public class BuildCode {
         Locale.setDefault(Locale.US);
         java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Europe/Berlin"));
         List<String> lectures = selectLectures(args);
+        if (CLEAN) {
+            for (String d : List.of("classes", "out", "stamps", "fxclasses")) deleteTree(BUILD.resolve(d));
+        }
         Path tools = compileTools();
         for (String lecture : lectures) {
             buildLecture(lecture, tools);
+            takeScreenshots(lecture);
         }
         writeWorkspace();
         System.out.printf("BuildCode: %d lecture(s), %d warning(s), %d error(s)%n",
@@ -109,7 +128,40 @@ public class BuildCode {
 
     // ---------------------------------------------------------------- per lecture
 
+    /** Builds a lecture, or replays the messages of the last build if nothing changed. */
     static void buildLecture(String lecture, Path tools) throws Exception {
+        Path stamp = BUILD.resolve("stamps").resolve(lecture + ".txt");
+        String hash = inputHash(lecture);
+        if (Files.exists(stamp) && Files.isDirectory(BUILD.resolve("classes").resolve(lecture))
+                && Files.isDirectory(BUILD.resolve("out").resolve(lecture))) {
+            // line 1: hash, line 2: number of warnings, then the messages of that build
+            String[] parts = Files.readString(stamp).split("\n", 3);
+            if (parts[0].equals(hash)) {
+                System.out.print(parts.length > 2 ? parts[2] : "");
+                warnings += Integer.parseInt(parts[1]);
+                System.out.println("BuildCode: " + lecture + " is up to date");
+                return;
+            }
+        }
+        Files.deleteIfExists(stamp);
+        int errorsBefore = errors;
+        int warningsBefore = warnings;
+        PrintStream console = System.out;
+        ByteArrayOutputStream messages = new ByteArrayOutputStream();
+        System.setOut(new PrintStream(new TeeOutputStream(console, messages), true, StandardCharsets.UTF_8));
+        try {
+            buildLectureNow(lecture, tools);
+        } finally {
+            System.setOut(console);
+        }
+        if (errors == errorsBefore) {
+            Files.createDirectories(stamp.getParent());
+            Files.writeString(stamp, hash + "\n" + (warnings - warningsBefore) + "\n"
+                    + messages.toString(StandardCharsets.UTF_8));
+        }
+    }
+
+    static void buildLectureNow(String lecture, Path tools) throws Exception {
         Path src = CODE.resolve(lecture);
         Path classes = BUILD.resolve("classes").resolve(lecture);
         Path out = BUILD.resolve("out").resolve(lecture);
@@ -136,6 +188,37 @@ public class BuildCode {
             Files.createDirectories(out.resolve("warnings"));
             for (Path f : listFiles(warn, ".java")) checkBroken(f, out.resolve("warnings"), true, classes);
         }
+    }
+
+    /** Hash of everything the build of a lecture depends on. */
+    static String inputHash(String lecture) throws Exception {
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        Path src = CODE.resolve(lecture);
+        for (Path dir : List.of(src, src.resolve("broken"), src.resolve("warnings"))) {
+            for (String ext : List.of(".java", ".in", ".jsh")) {
+                for (Path f : listFiles(dir, ext)) addToHash(md, ROOT.relativize(f).toString().replace('\\', '/'), f);
+            }
+        }
+        addToHash(md, "BuildCode", TOOLS.resolve("BuildCode.java"));
+        addToHash(md, "EchoRunner", TOOLS.resolve("EchoRunner.java"));
+        md.update(Runtime.version().toString().getBytes(StandardCharsets.UTF_8));
+        return java.util.HexFormat.of().formatHex(md.digest());
+    }
+
+    /** Adds name and text of a file; line endings do not matter (git may convert them). */
+    static void addToHash(MessageDigest md, String name, Path file) throws IOException {
+        md.update((name + "\n").getBytes(StandardCharsets.UTF_8));
+        md.update(Files.readString(file).replace("\r\n", "\n").getBytes(StandardCharsets.UTF_8));
+        md.update((byte) 0);
+    }
+
+    /** Writes to two streams. */
+    static class TeeOutputStream extends java.io.OutputStream {
+        private final java.io.OutputStream a, b;
+        TeeOutputStream(java.io.OutputStream a, java.io.OutputStream b) { this.a = a; this.b = b; }
+        @Override public void write(int c) throws IOException { a.write(c); b.write(c); }
+        @Override public void write(byte[] buf, int off, int len) throws IOException { a.write(buf, off, len); b.write(buf, off, len); }
+        @Override public void flush() throws IOException { a.flush(); b.flush(); }
     }
 
     static List<Path> listFiles(Path dir, String ext) throws IOException {
@@ -410,6 +493,211 @@ public class BuildCode {
             if (!line.strip().startsWith("//")) sb.append(line).append('\n');
         }
         return sb.toString();
+    }
+
+    // ---------------------------------------------------------------- screenshots
+
+    /**
+     * Screenshots of the JavaFX programs of a lecture, listed in code/NN-name/screenshots.txt (format:
+     * see FxShots.java). Only stale shots are taken again. JavaFX comes from the lecture's Gradle project
+     * (task javafxModules copies the jars to build/javafx) or from $PATH_TO_FX (lib folder of an SDK).
+     */
+    static void takeScreenshots(String lecture) throws Exception {
+        Path src = CODE.resolve(lecture);
+        Path spec = src.resolve("screenshots.txt");
+        if (!Files.exists(spec)) return;
+        Path outDir = ROOT.resolve("images").resolve(lecture).resolve("screenshots");
+        Path shaFile = outDir.resolve("screenshots.sha");
+        Map<String, String> recorded = new LinkedHashMap<>();
+        if (Files.exists(shaFile) && !CLEAN) {
+            for (String line : Files.readAllLines(shaFile)) {
+                String[] kv = line.split(" ", 2);
+                if (kv.length == 2) recorded.put(kv[0], kv[1]);
+            }
+        }
+        // sources by class name: this folder and fx/
+        Map<String, Path> sources = new TreeMap<>();
+        for (Path f : listFiles(src, ".java")) sources.put(baseName(f), f);
+        for (Path f : listFiles(src.resolve("fx"), ".java")) sources.put(baseName(f), f);
+        Map<String, String> wanted = new LinkedHashMap<>();   // shot name -> hash
+        List<String> stale = new ArrayList<>();
+        for (String line : Files.readAllLines(spec)) {
+            line = line.strip();
+            if (line.isEmpty() || line.startsWith("#")) continue;
+            String[] words = line.split("\\s+");
+            Path main = sources.get(words[1]);
+            if (main == null) {
+                System.out.println(ROOT.relativize(spec) + ": error: no class " + words[1] + " for shot " + words[0]);
+                errors++;
+                continue;
+            }
+            String hash = shotHash(line, main, sources, src);
+            wanted.put(words[0], hash);
+            if (!hash.equals(recorded.get(words[0])) || !Files.exists(outDir.resolve(words[0] + ".png"))) stale.add(words[0]);
+        }
+        if (stale.isEmpty()) {
+            System.out.println("BuildCode: screenshots of " + lecture + " are up to date");
+            return;
+        }
+        System.out.println("BuildCode: " + stale.size() + " screenshot(s) of " + lecture + " to take");
+
+        List<Path> jars = javafxJars(src);
+        if (jars.isEmpty()) {
+            System.out.println(ROOT.relativize(spec) + ": " + (STRICT ? "error" : "warning")
+                    + ": cannot take screenshots: no JavaFX. Run gradlew javafxModules in code/" + lecture
+                    + " or set PATH_TO_FX to the lib folder of a JavaFX SDK");
+            if (STRICT) errors++; else warnings++;
+            return;
+        }
+        String modulePath = jars.get(0).getParent().toString();
+        List<String> modules = new ArrayList<>();
+        for (Path jar : jars) {
+            Matcher m = Pattern.compile("javafx-(\\w+?)-.*\\.jar").matcher(jar.getFileName().toString());
+            if (m.matches() && !m.group(1).equals("base") && !m.group(1).equals("graphics")) modules.add("javafx." + m.group(1));
+        }
+        String addModules = String.join(",", modules);
+
+        // compile this folder, fx/ and FxShots together (this also checks the JavaFX code)
+        Path classes = BUILD.resolve("fxclasses").resolve(lecture);
+        deleteTree(classes);
+        Files.createDirectories(classes);
+        List<Path> files = new ArrayList<>(listFiles(src, ".java"));
+        files.addAll(listFiles(src.resolve("fx"), ".java"));
+        files.add(TOOLS.resolve("FxShots.java"));
+        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
+        DiagnosticCollector<JavaFileObject> diags = new DiagnosticCollector<>();
+        boolean ok;
+        try (StandardJavaFileManager fm = javac.getStandardFileManager(diags, Locale.ENGLISH, StandardCharsets.UTF_8)) {
+            ok = javac.getTask(null, fm, diags, List.of("--release", String.valueOf(RELEASE), "-Xlint:all", "-g",
+                    "-encoding", "UTF-8", "--module-path", modulePath, "--add-modules", addModules,
+                    "-d", classes.toString()), null, fm.getJavaFileObjectsFromPaths(files)).call();
+        }
+        for (Diagnostic<? extends JavaFileObject> d : diags.getDiagnostics()) {
+            if (d.getKind() == Diagnostic.Kind.NOTE || d.getKind() == Diagnostic.Kind.OTHER) continue;
+            String where = d.getSource() == null ? lecture
+                    : ROOT.relativize(Path.of(d.getSource().toUri())) + ":" + d.getLineNumber();
+            boolean error = d.getKind() == Diagnostic.Kind.ERROR;
+            System.out.println(where + ": " + (error ? "error" : "warning") + ": " + d.getMessage(Locale.ENGLISH));
+            if (error) errors++; else warnings++;
+        }
+        if (!ok) return;
+        for (String resources : List.of("images", "media")) {
+            Path from = src.resolve("fx").resolve(resources);
+            if (Files.isDirectory(from)) copyTree(from, classes.resolve(resources));
+        }
+
+        List<String> cmd = new ArrayList<>(List.of(
+                ProcessHandle.current().info().command().orElse("java"),
+                "-Dprism.order=sw", "--enable-native-access=javafx.graphics", "-Dfile.encoding=UTF-8",
+                "-Dstdout.encoding=UTF-8", "-Duser.language=en", "-Duser.country=US",
+                "--module-path", modulePath, "--add-modules", addModules,
+                "-cp", classes.toString(), "FxShots", spec.toString(), outDir.toString()));
+        cmd.addAll(stale);
+        Files.createDirectories(outDir);
+        Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+        byte[] bytes;
+        try (var in = p.getInputStream()) {
+            bytes = in.readAllBytes();
+        }
+        p.waitFor(1, TimeUnit.MINUTES);
+        String log = new String(bytes, StandardCharsets.UTF_8).replace("\r\n", "\n");
+        List<String> taken = new ArrayList<>();
+        int shotErrors = 0;
+        for (String line : log.split("\n")) {
+            if (line.startsWith("shot ")) taken.add(line.substring(5).strip());
+            else if (line.contains(": error:")) {
+                System.out.println(ROOT.relativize(spec) + ": error: " + line);
+                shotErrors++;
+            }
+        }
+        if (shotErrors == 0 && taken.size() < stale.size()) {
+            System.out.println(ROOT.relativize(spec) + ": error: FxShots failed\n" + indent(log));
+            shotErrors++;
+        }
+        errors += shotErrors;
+        // record what is in order now: the up-to-date shots and the ones just taken
+        StringBuilder sha = new StringBuilder();
+        for (Map.Entry<String, String> e : wanted.entrySet()) {
+            if (!stale.contains(e.getKey()) || taken.contains(e.getKey())) {
+                sha.append(e.getKey()).append(' ').append(e.getValue()).append('\n');
+            }
+        }
+        Files.writeString(shaFile, sha.toString());
+        System.out.println("BuildCode: took " + taken.size() + " screenshot(s) into " + ROOT.relativize(outDir));
+    }
+
+    static String baseName(Path f) {
+        return f.getFileName().toString().replaceFirst("\\.java$", "");
+    }
+
+    /** JavaFX jars: from the lecture's Gradle build (made on demand) or from $PATH_TO_FX. */
+    static List<Path> javafxJars(Path src) throws Exception {
+        Path dir = src.resolve("build").resolve("javafx");
+        if (jarsIn(dir).isEmpty()) {
+            boolean windows = System.getProperty("os.name").startsWith("Windows");
+            Path gradlew = src.resolve(windows ? "gradlew.bat" : "gradlew");
+            if (Files.exists(gradlew)) {
+                System.out.println("BuildCode: gradlew javafxModules in " + ROOT.relativize(src));
+                Process p = new ProcessBuilder(gradlew.toString(), "javafxModules", "-q")
+                        .directory(src.toFile()).redirectErrorStream(true).start();
+                String log = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                if (p.waitFor() != 0) System.out.println(indent(log));
+            }
+        }
+        List<Path> jars = jarsIn(dir);
+        String sdk = System.getenv("PATH_TO_FX");
+        return jars.isEmpty() && sdk != null ? jarsIn(Path.of(sdk)) : jars;
+    }
+
+    static List<Path> jarsIn(Path dir) throws IOException {
+        if (!Files.isDirectory(dir)) return List.of();
+        try (Stream<Path> s = Files.list(dir)) {
+            return s.filter(f -> f.getFileName().toString().matches("javafx-.*\\.jar")).sorted().toList();
+        }
+    }
+
+    /**
+     * Hash of a screenshot: its line in screenshots.txt, the program, every class of the lecture it
+     * uses (directly or through other classes), the images and media in fx/, and the engine.
+     */
+    static String shotHash(String line, Path main, Map<String, Path> sources, Path src) throws Exception {
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        md.update(line.getBytes(StandardCharsets.UTF_8));
+        Map<String, Path> used = new TreeMap<>();
+        List<Path> todo = new ArrayList<>(List.of(main));
+        used.put(baseName(main), main);
+        while (!todo.isEmpty()) {
+            String text = Files.readString(todo.remove(todo.size() - 1));
+            for (Map.Entry<String, Path> e : sources.entrySet()) {
+                if (!used.containsKey(e.getKey()) && Pattern.compile("\\b" + e.getKey() + "\\b").matcher(text).find()) {
+                    used.put(e.getKey(), e.getValue());
+                    todo.add(e.getValue());
+                }
+            }
+        }
+        for (Map.Entry<String, Path> e : used.entrySet()) addToHash(md, e.getKey(), e.getValue());
+        for (String resources : List.of("images", "media")) {
+            Path dir = src.resolve("fx").resolve(resources);
+            if (!Files.isDirectory(dir)) continue;
+            try (Stream<Path> s = Files.walk(dir)) {
+                for (Path f : s.filter(Files::isRegularFile).sorted().toList()) {
+                    md.update(dir.relativize(f).toString().getBytes(StandardCharsets.UTF_8));
+                    md.update(Files.readAllBytes(f));
+                }
+            }
+        }
+        addToHash(md, "FxShots", TOOLS.resolve("FxShots.java"));
+        return java.util.HexFormat.of().formatHex(md.digest());
+    }
+
+    static void copyTree(Path from, Path to) throws IOException {
+        try (Stream<Path> s = Files.walk(from)) {
+            for (Path f : s.toList()) {
+                Path target = to.resolve(from.relativize(f).toString());
+                if (Files.isDirectory(f)) Files.createDirectories(target);
+                else Files.copy(f, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
     }
 
     // ---------------------------------------------------------------- course-wide checks

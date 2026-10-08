@@ -116,6 +116,24 @@ local function load_credits()
   return credits
 end
 
+-- Screenshots made by tools/FxShots.java (images/<deck>/screenshots/*.png) need no credits.yml entry:
+-- the author is lecturer.name (or screenshots.author) and the licence is screenshots.license, both from
+-- _variables.yml.
+local screenshot_credit = nil
+local function load_screenshot_credit()
+  if screenshot_credit then return screenshot_credit end
+  screenshot_credit = {}
+  local text = lib.read_file("_variables.yml")
+  if not text then return screenshot_credit end
+  local meta = pandoc.read("---\n" .. text .. "\n---\n", "markdown").meta
+  local shots = meta.screenshots
+  local author = shots and shots.author or (meta.lecturer and meta.lecturer.name)
+  screenshot_credit.author = author and pandoc.utils.stringify(author) or nil
+  screenshot_credit.license = shots and shots.license and pandoc.utils.stringify(shots.license) or nil
+  return screenshot_credit
+end
+local used_screenshots = false
+
 -- project-relative path of an image referenced from the current document
 local function project_rel(src)
   if src:match("^/") then return src:sub(2) end
@@ -137,6 +155,14 @@ function Image(el)
   end
   local rel = project_rel(el.src)
   if rel:match("^_build/") then return nil end
+  if rel:match("^images/[^/]+/screenshots/[^/]+%.png$") then
+    local sc = load_screenshot_credit()
+    if not sc.author or not sc.license then
+      lib.fail("screenshot " .. rel .. ": set screenshots.license in _variables.yml (author: lecturer.name)")
+    end
+    used_screenshots = true
+    return nil
+  end
   local c = load_credits()[rel]
   if not c or not c.source or not c.license then
     lib.fail("image " .. rel .. " has no source/license entry in images/credits.yml")
@@ -158,7 +184,7 @@ function Div(el)
 end
 
 local function credits_slide()
-  if #used_credits == 0 then return {} end
+  if #used_credits == 0 and not used_screenshots then return {} end
   local items = {}
   for _, rel in ipairs(used_credits) do
     local c = credits[rel]
@@ -166,6 +192,11 @@ local function credits_slide()
     if c.author then text = text .. ", " .. c.author end
     text = text .. " (" .. c.license .. ")"
     items[#items + 1] = { pandoc.Plain(pandoc.Inlines(text)) }
+  end
+  if used_screenshots then
+    local sc = load_screenshot_credit()
+    items[#items + 1] = { pandoc.Plain(pandoc.Inlines(
+      "Screenshots of the course examples: " .. (sc.author or "?") .. " (" .. (sc.license or "?") .. ")")) }
   end
   return {
     pandoc.Header(2, "Image credits", { class = "credits" }),

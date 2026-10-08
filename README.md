@@ -60,12 +60,41 @@ compiles and debugs with Java 25, add to your **user** settings:
 | `./build.ps1 05 -Layout` | HTML plus layout report (`_build/layout/05-….txt`; also part of `-Pdf`) |
 | `./build.ps1 05 -ShowLayout` | also marks overflowing slides in the HTML and PDF (red outline and label) |
 | `./build.ps1 -Strict` | release: also fails on `::: todo` blocks and layout problems |
+| `./build.ps1 -Clean` | deletes the build output and makes all code results and screenshots again |
 
-On Linux/macOS/CI: `./build.sh [lecture] [--pdf] [--strict] [--show-layout]`.
+On Linux/macOS/CI: `./build.sh [lecture] [--pdf] [--strict] [--show-layout] [--clean]`.
 
 The build fails if code does not compile, a program crashes, a jshell snippet fails, a file in
 `broken/` compiles, an image has no alt text or no entry in `images/credits.yml`, or an included
 region does not exist.
+
+Code results (compiling, running, jshell) and screenshots are made **on demand**. A lecture is built
+again only if its code or the build tool changed (`_build/stamps/`); the messages of the last build
+are shown again. Delete `_build/` or use `-Clean` to build everything.
+
+### Screenshots of JavaFX programs
+
+A lecture folder with a file `screenshots.txt` gets screenshots of its JavaFX programs, written to
+`images/NN-name/screenshots/` and used on slides like any image (alt text required):
+
+```
+# name              program        actions
+PosterSheet         PosterSheet    size=420x300
+PosterSheet-wide    PosterSheet    size=600x300
+Registration        Registration   text=Gunta fire="Pottery"
+```
+
+- Programs are the `.java` files of the lecture folder and its `fx/` subfolder. The actions (`size`,
+  `wait`, `fire`, `text`, `slider`, `select`, `type`, `key`, `click`, `drag`) are listed in
+  `tools/FxShots.java`; images are 2x pixels, a second window becomes `name-2.png`.
+- JavaFX comes from the lecture's Gradle project (`gradlew javafxModules` copies the jars to
+  `build/javafx`) or from `$PATH_TO_FX`, the `lib` folder of a JavaFX SDK. Without JavaFX the build
+  warns (`-Strict`: fails) and keeps the existing images.
+- A screenshot is taken again only if its line in `screenshots.txt`, its program, the lecture classes it
+  uses, the images in `fx/` or `FxShots.java` changed. The hashes are in `screenshots.sha` next to the
+  images: **commit it with the images**, then fresh checkouts and CI take nothing and need no display.
+- Credits: no `credits.yml` entry. The author is `lecturer.name` and the licence `screenshots.license`
+  from `_variables.yml`; the credits slide gets one line for all screenshots.
 
 Layout: a slide whose content runs into the footer, or whose listing is clipped or too wide, is a
 layout problem. Three switches, independent of each other:

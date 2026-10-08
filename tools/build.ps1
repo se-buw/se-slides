@@ -13,6 +13,7 @@
   ./build.ps1 -Strict         # release: also fail on ::: todo blocks and layout problems
   ./build.ps1 05 -Layout      # HTML plus layout report (also part of -Pdf)
   ./build.ps1 05 -ShowLayout  # also mark overflowing slides in the browser and PDF
+  ./build.ps1 -Clean          # delete the build output and take all code results and screenshots again
 #>
 param(
   [Parameter(Position = 0, ValueFromRemainingArguments = $true)][string[]]$Lecture = @(),
@@ -22,7 +23,8 @@ param(
   [switch]$Strict,
   [switch]$Lenient,
   [switch]$Layout,
-  [switch]$ShowLayout
+  [switch]$ShowLayout,
+  [switch]$Clean
 )
 $ErrorActionPreference = 'Stop'
 $Root = (Get-Location).Path
@@ -182,6 +184,8 @@ $quarto = Find-Quarto
 $targets = @(Resolve-Lectures $Lecture)
 if ($Strict) { $env:COURSE_STRICT = '1' } else { Remove-Item Env:COURSE_STRICT -ErrorAction SilentlyContinue }
 if ($Lenient) { $env:COURSE_LENIENT = '1' } else { Remove-Item Env:COURSE_LENIENT -ErrorAction SilentlyContinue }
+# Code results and screenshots are made on demand; -Clean makes everything again.
+if ($Clean) { $env:COURSE_CLEAN = '1' } else { Remove-Item Env:COURSE_CLEAN -ErrorAction SilentlyContinue }
 # Visible layout marks (red outline and label) only on request; the layout report does not need them.
 if ($ShowLayout) { $env:COURSE_LAYOUT_MARKS = '1' } else { Remove-Item Env:COURSE_LAYOUT_MARKS -ErrorAction SilentlyContinue }
 # Your local HTML opens files in VS Code from this checkout by default.

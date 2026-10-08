@@ -12,3 +12,6 @@ lecturer:
 java:
   version: "25"
 quiz: "https://partici.fi/00000000"
+screenshots:
+  # licence of the screenshots made by the build (code/NN-name/screenshots.txt); author is lecturer.name
+  license: "CC BY 4.0"
