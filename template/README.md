@@ -18,6 +18,8 @@ In VS Code, open `course.code-workspace` (created by the first build).
 ./build.ps1 05 -Preview      # live preview of lecture 05
 ./build.ps1 05 -Pdf          # HTML and PDF of lecture 05 (_site/)
 ./build.ps1 -Pdf -Moodle     # everything, plus dist/moodle-<date>.zip
+./video.ps1 05               # after a recorded lecture (Shift+R in the deck first): YouTube chapters
+./video.ps1 05 -Id <link>    # after the upload: video links on the slides (lectures/05-….video.json)
 ```
 
 ## Contents

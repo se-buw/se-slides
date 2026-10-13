@@ -233,17 +233,56 @@ The course workflow (`.github/workflows/build.yml`) builds on every push and nig
 - GitHub Pages from private repositories requires a paid plan (GitHub Team/Enterprise or the free
   education offer); the published site itself is public.
 
+## Recording lectures
+
+Lectures recorded with OBS and uploaded to YouTube (public or unlisted) get chapters in the video and
+a "▶ Video" link on every slide (key `Y`) that opens the recording where the slide was explained.
+Nothing changes in the `.qmd` files and there is nothing to press during the lecture: each deck logs
+its slide changes with the time in the browser, and OBS names a recording after its start time.
+
+After the lecture, in a course folder:
+
+1. In the deck you presented, press **Shift+R**: the browser saves the log as
+   `slidelog-<date>.json` to Downloads.
+2. `./video.ps1 05`: prints the YouTube chapters and copies them to the clipboard.
+3. Upload the recording in YouTube Studio and paste the chapters into the description.
+4. `./video.ps1 05 -Id <link>`: writes the video ID into `lectures/05-….video.json`. Commit it; the
+   build adds the links to the slides, the lecture list and the Moodle index.
+
+How the times are found:
+- **Recording window:** the start comes from the OBS file name (the default
+  `2026-10-14 10-15-03.mkv`). The end is start + length (with `ffprobe` installed) or else the
+  file's last change. Recordings are looked for in your Videos folder; use `-RecordingDir` or
+  `COURSE_RECORDINGS` for another folder, or `-Recording <file>`. `-Start`/`-End` set the window by
+  hand.
+- **What is ignored:** going through the slides before or after the recording. The slide on screen
+  when the recording starts counts from 0:00.
+- **Longest visit:** a slide links to its longest visit, so flipping through slides, previewing one
+  and short recaps don't move the link. A reload or a closed and reopened deck doesn't split a visit.
+- **Other decks:** switching to another deck in between is fine.
+- **Several recordings:** a lecture recorded in several files (OBS restarted, or two sessions) gets
+  one video per file. `-Id` takes their links in recording order.
+- **Chapters:** each section and each slide shown for at least 60 s (`-MinChapter`). A slide the
+  lecture comes back to gets `↩`.
+- **Running it again** is safe: video IDs are kept. `-Id` also corrects IDs.
+
+Don't pause the recording (it shifts all later times; stop and start a new one instead), don't
+present in a private window (its log is gone when it closes) and export the log within 14 days.
+The log is stored per site: export it from the place you presented from (`file://`, Pages,
+preview).
+
 ## Repository layout
 
 ```
 _extension.yml            Quarto extension: format se-slides-revealjs, shortcodes
 se-slides.lua, lib.lua    filter: listings, output, questions, images/credits, todo, lecture list
 shortcodes.lua            {{< qr >}}, {{< jshell >}}, {{< error >}}
-se-slides.js / .css       VS Code buttons, QR codes, layout check, home link; styles
+se-slides.js / .css       VS Code buttons, QR codes, layout check, home link, slide log and
+                          video link; styles
 theme/se.scss             colours and sizes
 fonts/, brand/            Jost, JetBrains Mono (OFL); group logo and favicon
 tools/                    build.ps1/.sh, BuildCode.java, EchoRunner.java, prerender.ts,
-                          bootstrap.ps1, new-course.ps1
+                          bootstrap.ps1, new-course.ps1, video.ps1 (lecture recordings)
 template/                 skeleton of a new course
 ```
 

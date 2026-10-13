@@ -98,11 +98,12 @@ html.print-pdf .reveal .code-actions button { display: none; }
 .reveal .slides section .corner { position: absolute; right: 0; top: 0; }
 
 /* Link back to the list of lectures (se-slides.js) */
-.reveal .course-home {
+.reveal .course-home, .reveal .course-video {
   position: absolute; left: 12px; bottom: 8px; z-index: 30;
   font: 14px/1.2 "Jost", sans-serif; color: var(--course-muted, #555); text-decoration: none;
 }
-.reveal .course-home:hover { color: var(--course-accent, #1d4e89); text-decoration: underline; }
+.reveal .course-video { left: 130px; }
+.reveal .course-home:hover, .reveal .course-video:hover { color: var(--course-accent, #1d4e89); text-decoration: underline; }
 
 /* Group logo on the title slide (brand/logo_se.png) */
 .reveal .slides section#title-slide::after {

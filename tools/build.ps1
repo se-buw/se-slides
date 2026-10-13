@@ -153,7 +153,18 @@ function Write-MoodleIndex([string]$staging, [string]$courseTitle) {
       if ($m) { $title = $m.Matches[0].Groups[1].Value }
     }
     $pdf = if (Test-Path "$staging/pdf/$($f.BaseName).pdf") { "<a href=""pdf/$($f.BaseName).pdf"">PDF</a>" } else { '' }
-    "<tr><td>$($f.BaseName.Substring(0, 2))</td><td><a href=""html/$($f.Name)"">$([Net.WebUtility]::HtmlEncode($title))</a></td><td>$pdf</td></tr>"
+    # recordings from tools/video.ps1, as in the index of the website
+    $ids = @()
+    if (Test-Path "lectures/$($f.BaseName).video.json") {
+      $ids = @((Get-Content -Raw "lectures/$($f.BaseName).video.json" | ConvertFrom-Json).videos |
+          Where-Object { $_.id -and $_.id -ne 'TODO' } | ForEach-Object id)
+    }
+    $n = 0
+    $video = ($ids | ForEach-Object {
+        $n++
+        "<a href=""https://youtu.be/$([Net.WebUtility]::HtmlEncode($_))"" target=""_blank"">$(if ($ids.Count -eq 1) { 'Video' } else { $n })</a>"
+      }) -join ' '
+    "<tr><td>$($f.BaseName.Substring(0, 2))</td><td><a href=""html/$($f.Name)"">$([Net.WebUtility]::HtmlEncode($title))</a></td><td>$pdf</td><td>$video</td></tr>"
   }
   $t = [Net.WebUtility]::HtmlEncode($courseTitle)
   $html = @"

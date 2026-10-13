@@ -204,6 +204,34 @@ local function credits_slide()
   }
 end
 
+-- Lecture recordings: lectures/<deck>.video.json, written by tools/video.ps1. Returns the videos that
+-- have a YouTube ID ({ id, slides = { [slide id] = { seconds, length of the visit } } }), or {}.
+local function deck_videos(name)
+  local text = lib.read_file("lectures/" .. name .. ".video.json")
+  if not text then return {} end
+  local ok, data = pcall(pandoc.json.decode, text, false)
+  if not ok or type(data) ~= "table" then
+    lib.fail("lectures/" .. name .. ".video.json is not valid JSON")
+    return {}
+  end
+  local videos = {}
+  for _, v in ipairs(data.videos or {}) do
+    if type(v.id) == "string" and v.id:match("^[%w_-]+$") and v.id ~= "TODO" then
+      table.insert(videos, { id = v.id, slides = v.slides or {} })
+    end
+  end
+  return videos
+end
+
+-- for se-slides.js ("▶ Video" link at every slide)
+local function embed_videos()
+  local name = pandoc.path.split_extension(pandoc.path.filename(quarto.doc.input_file))
+  local videos = deck_videos(name)
+  if #videos == 0 then return end
+  local json = pandoc.json.encode({ videos = videos }):gsub("</", "<\\/")
+  quarto.doc.include_text("after-body", '<script type="application/json" id="course-video">' .. json .. "</script>")
+end
+
 -- Index page: `::: {#lectures}` becomes a table of all lectures (title, subtitle, PDF), read from the
 -- front matter of lectures/[0-9]*.qmd. Long lists continue on further slides; the budget is in
 -- table lines per slide (metadata lectures-per-slide, default 12), a row counts one line per 70
@@ -229,6 +257,7 @@ local function lecture_entries()
       name = name,
       title = meta.title and pandoc.utils.stringify(meta.title) or name,
       subtitle = meta.subtitle and pandoc.utils.stringify(meta.subtitle) or "",
+      videos = deck_videos(name),
     })
   end
   return entries
@@ -243,20 +272,38 @@ local function new_tab(el)
   return el
 end
 
-local function lecture_table(entries)
+-- links to the recordings of a lecture: "Video", or "1 2" for a lecture in several recordings
+local function video_links(videos)
+  local inlines = {}
+  for i, v in ipairs(videos) do
+    if i > 1 then table.insert(inlines, pandoc.Space()) end
+    table.insert(inlines, new_tab(pandoc.Link(#videos == 1 and "Video" or tostring(i), "https://youtu.be/" .. v.id)))
+  end
+  return inlines
+end
+
+-- with_video: the Video column, shown as soon as any lecture has a recording
+local function lecture_table(entries, with_video)
   local function cell(inlines) return { pandoc.Plain(inlines) } end
   local rows = {}
   for _, e in ipairs(entries) do
-    table.insert(rows, {
+    local row = {
       cell({ new_tab(pandoc.Link(e.title, "lectures/" .. e.name .. ".html")) }),
       cell({ pandoc.Str(e.subtitle) }),
       cell({ new_tab(pandoc.Link("PDF", "pdf/" .. e.name .. ".pdf")) }),
-    })
+    }
+    if with_video then table.insert(row, cell(video_links(e.videos))) end
+    table.insert(rows, row)
   end
-  local simple = pandoc.SimpleTable({}, { pandoc.AlignDefault, pandoc.AlignDefault, pandoc.AlignDefault },
-    { 0.3, 0.6, 0.1 }, { cell({ pandoc.Str("Lecture") }), cell({ pandoc.Str("Topics") }), cell({ pandoc.Str("PDF") }) },
-    rows)
-  return pandoc.utils.from_simple_table(simple)
+  local align = { pandoc.AlignDefault, pandoc.AlignDefault, pandoc.AlignDefault }
+  local widths = { 0.3, 0.6, 0.1 }
+  local head = { cell({ pandoc.Str("Lecture") }), cell({ pandoc.Str("Topics") }), cell({ pandoc.Str("PDF") }) }
+  if with_video then
+    table.insert(align, pandoc.AlignDefault)
+    widths = { 0.28, 0.52, 0.08, 0.12 }
+    table.insert(head, cell({ pandoc.Str("Video") }))
+  end
+  return pandoc.utils.from_simple_table(pandoc.SimpleTable({}, align, widths, head, rows))
 end
 
 local function lecture_slides(doc)
@@ -267,7 +314,12 @@ local function lecture_slides(doc)
   if not at then return end
   local budget = tonumber(doc.meta["lectures-per-slide"] and pandoc.utils.stringify(doc.meta["lectures-per-slide"])) or 12
   local chunks, current, used, limit = {}, {}, 0, budget - 2
-  for _, e in ipairs(lecture_entries()) do
+  local entries = lecture_entries()
+  local with_video = false
+  for _, e in ipairs(entries) do
+    if #e.videos > 0 then with_video = true end
+  end
+  for _, e in ipairs(entries) do
     local lines = math.max(1, math.ceil(#e.subtitle / 70))
     if #current > 0 and used + lines > limit then
       table.insert(chunks, current)
@@ -280,7 +332,7 @@ local function lecture_slides(doc)
   local blocks = {}
   for i, c in ipairs(chunks) do
     if i > 1 then table.insert(blocks, pandoc.Header(2, "Lectures (continued)")) end
-    table.insert(blocks, lecture_table(c))
+    table.insert(blocks, lecture_table(c, with_video))
   end
   doc.blocks:remove(at)
   for i = #blocks, 1, -1 do doc.blocks:insert(at, blocks[i]) end
@@ -314,6 +366,7 @@ return {
           quarto.doc.include_text("in-header",
             '<meta name="course-vscode-root" content="' .. lib.html_escape(vroot:gsub("\\", "/")) .. '">')
         end
+        embed_videos()
       end
       if todo_count > 0 then
         quarto.log.warning("[course] " .. todo_count .. " todo block(s) in " .. quarto.doc.input_file)
