@@ -55,14 +55,15 @@ compiles and debugs with Java 25, add to your **user** settings:
 | `./build.ps1 05` | HTML of lecture 05 in `_site/lectures/` |
 | `./build.ps1 05 -Pdf` | plus `_site/pdf/05-….pdf` |
 | `./build.ps1 -Pdf` | all lectures, HTML and PDF |
-| `./build.ps1 -Pdf -Moodle` | plus `dist/moodle-<date>.zip` (self-contained HTML, PDF, code, index page) |
+| `./build.ps1 -Pdf -Moodle` | released lectures, plus `dist/moodle-<date>.zip` (self-contained HTML, PDF, code, index page) |
+| `./build.ps1 -Release` | only the lectures in `release.txt`, as on the website (see Publishing) |
 | `./build.ps1 -Lenient` | drafting: missing alt text, credits or regions only warn |
 | `./build.ps1 05 -Layout` | HTML plus layout report (`_build/layout/05-….txt`; also part of `-Pdf`) |
 | `./build.ps1 05 -ShowLayout` | also marks overflowing slides in the HTML and PDF (red outline and label) |
 | `./build.ps1 -Strict` | release: also fails on `::: todo` blocks and layout problems |
 | `./build.ps1 -Clean` | deletes the build output and makes all code results and screenshots again |
 
-On Linux/macOS/CI: `./build.sh [lecture] [--pdf] [--strict] [--show-layout] [--clean]`.
+On Linux/macOS/CI: `./build.sh [lecture] [--pdf] [--strict] [--show-layout] [--clean] [--release]`.
 
 The build fails if code does not compile, a program crashes, a jshell snippet fails, a file in
 `broken/` compiles, an image has no alt text or no entry in `images/credits.yml`, or an included
@@ -232,6 +233,31 @@ The course workflow (`.github/workflows/build.yml`) builds on every push and nig
   as secret `SE_SLIDES_TOKEN`.
 - GitHub Pages from private repositories requires a paid plan (GitHub Team/Enterprise or the free
   education offer); the published site itself is public.
+
+### Releasing lectures one by one
+
+`release.txt` in the course folder lists the released lectures, one per line (`05` or `05-loops`,
+`#` comments). Without the file every lecture counts as released.
+
+- `./build.sh --release` / `./build.ps1 -Release` build only these lectures, and the lecture list on
+  the index page shows only them. The workflow builds with `--release`, so the website has only
+  released lectures. Without the flag (your local builds) everything is built and listed.
+- `-Moodle` implies `-Release`: the bundle has the released HTML, PDF and code, with a
+  `course.code-workspace` for the students and without build output.
+- `java _extensions/se-slides/tools/BuildCode.java --export-code DIR [lecture ...]` copies the
+  git-tracked files of the released lectures' `code/` folders to `DIR/code/`, and writes a students'
+  `course.code-workspace` and a `.gitignore`.
+
+**Students' code repository.** A job `publish-code` in the workflow exports the released code to a
+public repository (e.g. `se-buw/<course>-code`) and commits only when something changed ("Release
+06-methods" when a lecture is added). Set `repo-url` in `_quarto.yml` to that repository for "web"
+links next to listings (`<repo-url>/blob/main/code/...`); exclude it from the link check, since new
+files arrive there only after the check. Setup once:
+
+1. Create the repository with an initial commit on `main`.
+2. `ssh-keygen -t ed25519 -N "" -f deploy-key`: add `deploy-key.pub` to the code repository as
+   deploy key with write access, and the private key `deploy-key` to the course repository as secret
+   `STUDENT_CODE_DEPLOY_KEY`. Delete both files afterwards.
 
 ## Recording lectures
 

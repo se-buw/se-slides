@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 # Builds a course's slides (Linux/macOS/CI). Called by the course's build.sh from the course folder.
-#   build.sh [lecture ...] [--pdf] [--strict] [--lenient] [--show-layout] [--clean]
+#   build.sh [lecture ...] [--pdf] [--strict] [--lenient] [--show-layout] [--clean] [--release]
+#   --release: only the lectures in release.txt (all if there is none); the index lists only them
 set -euo pipefail
 [ -f _quarto.yml ] || { echo "Run this from a course folder (no _quarto.yml in $PWD)"; exit 1; }
 
+# lectures/NAME.qmd or lectures/NAME-*.qmd ("05" or "05-loops")
+lecture_files() {
+  for f in lectures/"$1".qmd lectures/"$1"-*.qmd; do [ -f "$f" ] && echo "$f"; done
+  return 0
+}
+
 pdf=0
+release=0
 targets=()
 for a in "$@"; do
   case "$a" in
@@ -13,9 +21,39 @@ for a in "$@"; do
     --lenient) export COURSE_LENIENT=1 ;;
     --show-layout) export COURSE_LAYOUT_MARKS=1 ;;
     --clean) export COURSE_CLEAN=1 ;;
-    *) for f in lectures/"$a".qmd lectures/"$a"-*.qmd; do [ -f "$f" ] && targets+=("$f"); done ;;
+    --release) release=1 ;;
+    *) while read -r f; do targets+=("$f"); done < <(lecture_files "$a") ;;
   esac
 done
+
+if [ "$release" = 1 ]; then
+  released=()
+  if [ -f release.txt ]; then
+    while read -r line; do
+      name="$(echo "${line%%#*}" | tr -d '[:space:]')"
+      [ -n "$name" ] || continue
+      found="$(lecture_files "$name")"
+      [ -n "$found" ] || { echo "release.txt: no lecture matches '$name'"; exit 1; }
+      while read -r f; do released+=("$f"); done <<< "$found"
+    done < release.txt
+  else
+    released=(lectures/[0-9]*.qmd)
+  fi
+  # named lectures: only those that are released
+  if [ ${#targets[@]} -gt 0 ]; then
+    kept=()
+    for t in "${targets[@]}"; do
+      for r in "${released[@]}"; do [ "$t" = "$r" ] && kept+=("$t"); done
+    done
+    released=("${kept[@]}")
+  fi
+  [ ${#released[@]} -gt 0 ] || { echo "No released lecture to build"; exit 1; }
+  targets=("${released[@]}")
+  names=()
+  for t in "${targets[@]}"; do names+=("$(basename "$t" .qmd)"); done
+  export COURSE_RELEASE="${names[*]}"
+  echo "Release: ${names[*]}"
+fi
 
 cache="${SE_SLIDES_HOME:-$HOME/.cache/se-slides}"
 quarto=quarto

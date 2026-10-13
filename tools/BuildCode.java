@@ -56,6 +56,11 @@ import jdk.jshell.VarSnippet;
  *        (default: all lectures)
  * Quarto calls it as pre-render script and passes the files being rendered in
  * QUARTO_PROJECT_INPUT_FILES; only the matching lectures are built then.
+ *
+ * Export for students: java BuildCode.java --export-code DIR [lecture ...]
+ *        (default: the lectures in release.txt, or all if there is none) copies the git-tracked
+ *        files of code/NN-name/ to DIR/code/NN-name/ and writes DIR/course.code-workspace and
+ *        DIR/.gitignore; nothing is compiled.
  */
 public class BuildCode {
 
@@ -83,6 +88,16 @@ public class BuildCode {
         // Same results on every machine (jshell snippets run inside this JVM)
         Locale.setDefault(Locale.US);
         java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Europe/Berlin"));
+        if (args.length > 0 && args[0].equals("--export-code")) {
+            if (args.length < 2) {
+                System.err.println("Usage: BuildCode.java --export-code DIR [lecture ...]");
+                System.exit(2);
+            }
+            List<String> wanted = List.of(args).subList(2, args.length);
+            exportCode(Path.of(args[1]).toAbsolutePath(),
+                    wanted.isEmpty() ? releasedLectures() : matchLectures(allLectures(), wanted));
+            return;
+        }
         List<String> lectures = selectLectures(args);
         if (CLEAN) {
             for (String d : List.of("classes", "out", "stamps", "fxclasses")) deleteTree(BUILD.resolve(d));
@@ -122,8 +137,41 @@ public class BuildCode {
             }
         }
         if (wanted.isEmpty()) return all;
-        // "05-loops" or just "05"
+        return matchLectures(all, wanted);
+    }
+
+    /** The lectures matching the names: "05-loops" or just "05". */
+    static List<String> matchLectures(List<String> all, List<String> wanted) {
         return all.stream().filter(l -> wanted.stream().anyMatch(w -> l.equals(w) || l.startsWith(w + "-"))).toList();
+    }
+
+    /**
+     * The code folders of the lectures in release.txt (one name per line, # comments), or all
+     * if the course has no release.txt. A line that matches no deck and no code folder is an error.
+     */
+    static List<String> releasedLectures() throws IOException {
+        List<String> all = allLectures();
+        Path file = ROOT.resolve("release.txt");
+        if (!Files.exists(file)) return all;
+        List<String> decks = new ArrayList<>(all);
+        Path lectures = ROOT.resolve("lectures");
+        if (Files.isDirectory(lectures)) {
+            try (Stream<Path> s = Files.list(lectures)) {
+                s.map(p -> p.getFileName().toString()).filter(n -> n.matches("\\d.*\\.qmd"))
+                 .forEach(n -> decks.add(n.replaceFirst("\\.qmd$", "")));
+            }
+        }
+        List<String> wanted = new ArrayList<>();
+        for (String line : Files.readAllLines(file)) {
+            String name = line.replaceFirst("#.*", "").trim();
+            if (name.isEmpty()) continue;
+            if (matchLectures(decks, List.of(name)).isEmpty()) {
+                System.err.println("release.txt: no lecture matches '" + name + "'");
+                System.exit(1);
+            }
+            wanted.add(name);
+        }
+        return matchLectures(all, wanted);
     }
 
     // ---------------------------------------------------------------- per lecture
@@ -707,11 +755,15 @@ public class BuildCode {
      * so that lectures may reuse class names (Circle in lecture 08 and in lecture 09).
      */
     static void writeWorkspace() throws IOException {
-        StringBuilder folders = new StringBuilder();
-        folders.append("    { \"name\": \"slides\", \"path\": \".\" }");
-        for (String lecture : allLectures()) {
-            folders.append(",\n    { \"name\": \"").append(lecture).append("\", \"path\": \"code/")
-                   .append(lecture).append("\" }");
+        writeWorkspace(ROOT.resolve("course.code-workspace"), allLectures(), false);
+    }
+
+    /** The course's workspace has the slides folder as well; the students' one only the code. */
+    static void writeWorkspace(Path file, List<String> lectures, boolean student) throws IOException {
+        List<String> folders = new ArrayList<>();
+        if (!student) folders.add("    { \"name\": \"slides\", \"path\": \".\" }");
+        for (String lecture : lectures) {
+            folders.add("    { \"name\": \"" + lecture + "\", \"path\": \"code/" + lecture + "\" }");
         }
         String json = """
             {
@@ -722,7 +774,7 @@ public class BuildCode {
               ],
               "settings": {
                 "java.project.sourcePaths": ["."],
-                "files.exclude": { "_build": true, "_site": true, ".quarto": true, "code": true, "bin": true },
+                "files.exclude": { %s"bin": true },
                 "files.associations": { "*.jsh": "java" }
               },
               "launch": {
@@ -732,11 +784,44 @@ public class BuildCode {
                     "mainClass": "${file}", "console": "integratedTerminal" }
                 ]
               },
-              "extensions": { "recommendations": ["vscjava.vscode-java-pack", "quarto.quarto"] }
+              "extensions": { "recommendations": ["vscjava.vscode-java-pack"%s] }
             }
-            """.formatted(folders);
-        Path file = ROOT.resolve("course.code-workspace");
+            """.formatted(String.join(",\n", folders),
+                    student ? "" : "\"_build\": true, \"_site\": true, \".quarto\": true, \"code\": true, ",
+                    student ? "" : ", \"quarto.quarto\"");
         if (!Files.exists(file) || !Files.readString(file).equals(json)) Files.writeString(file, json);
+    }
+
+    /**
+     * Copies the git-tracked files of the lectures' code folders to out/code/ (never build output
+     * or local files), with a workspace and a .gitignore for the students.
+     */
+    static void exportCode(Path out, List<String> lectures) throws Exception {
+        for (String lecture : lectures) {
+            Process p = new ProcessBuilder("git", "ls-files", "-z", "code/" + lecture)
+                    .directory(ROOT.toFile()).redirectError(ProcessBuilder.Redirect.INHERIT).start();
+            String files = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            if (p.waitFor() != 0) {
+                System.err.println("git ls-files failed for code/" + lecture);
+                System.exit(1);
+            }
+            for (String f : files.split("\0")) {
+                if (f.isEmpty()) continue;
+                Path target = out.resolve(f);
+                Files.createDirectories(target.getParent());
+                Files.copy(ROOT.resolve(f), target, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        java.nio.file.StandardCopyOption.COPY_ATTRIBUTES);
+            }
+        }
+        writeWorkspace(out.resolve("course.code-workspace"), lectures, true);
+        Files.writeString(out.resolve(".gitignore"), """
+            # build output of VS Code and Gradle
+            bin/
+            build/
+            .gradle/
+            *.class
+            """);
+        System.out.printf("BuildCode: exported %d lecture(s) to %s: %s%n", lectures.size(), out, String.join(" ", lectures));
     }
 
     // ---------------------------------------------------------------- helpers

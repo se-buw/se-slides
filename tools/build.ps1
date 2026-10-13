@@ -7,7 +7,8 @@
   ./build.ps1                 # all lectures, HTML only (_site/)
   ./build.ps1 05              # only lecture 05, HTML
   ./build.ps1 05 -Pdf         # lecture 05, HTML + PDF (_site/pdf/)
-  ./build.ps1 -Pdf -Moodle    # everything, plus dist/moodle-<date>.zip
+  ./build.ps1 -Pdf -Moodle    # released lectures, plus dist/moodle-<date>.zip (-Moodle implies -Release)
+  ./build.ps1 -Release        # only the lectures in release.txt (all if there is none), as on the website
   ./build.ps1 05 -Preview     # live preview in the browser while editing
   ./build.ps1 -Lenient        # drafting: missing alt texts, credits, regions are warnings
   ./build.ps1 -Strict         # release: also fail on ::: todo blocks and layout problems
@@ -24,7 +25,8 @@ param(
   [switch]$Lenient,
   [switch]$Layout,
   [switch]$ShowLayout,
-  [switch]$Clean
+  [switch]$Clean,
+  [switch]$Release
 )
 $ErrorActionPreference = 'Stop'
 $Root = (Get-Location).Path
@@ -37,6 +39,22 @@ function Find-Quarto {
   $q = Get-Command quarto -ErrorAction SilentlyContinue
   if ($q) { return $q.Source }
   throw "Quarto not found. Run $PSScriptRoot/bootstrap.ps1 once."
+}
+
+# Same order as findJava() in prerender.ts
+function Find-Java {
+  if ($env:COURSE_JAVA) { return $env:COURSE_JAVA }
+  $cached = Join-Path $ToolCache 'jdk/bin/java.exe'
+  if (Test-Path $cached) { return $cached }
+  if ($env:JAVA_HOME -and (Test-Path (Join-Path $env:JAVA_HOME 'bin/java.exe'))) { return Join-Path $env:JAVA_HOME 'bin/java.exe' }
+  return 'java'
+}
+
+# The decks in release.txt (one per line, # comments), or all decks if the course has none
+function Released-Decks {
+  if (-not (Test-Path 'release.txt')) { return @(All-Decks) }
+  $names = Get-Content 'release.txt' | ForEach-Object { ($_ -replace '#.*', '').Trim() } | Where-Object { $_ }
+  return @(Resolve-Lectures @($names) | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) })
 }
 
 function Find-Browser {
@@ -193,6 +211,17 @@ function Course-Title {
 
 $quarto = Find-Quarto
 $targets = @(Resolve-Lectures $Lecture)
+# The Moodle bundle is for students: only released lectures, as on the website
+if ($Moodle) { $Release = $true }
+if ($Release) {
+  $released = @(Released-Decks)
+  if ($targets.Count) { $released = @($released | Where-Object { $targets -contains "lectures/$_.qmd" }) }
+  if (-not $released.Count) { throw 'No released lecture to build (release.txt).' }
+  $targets = @($released | ForEach-Object { "lectures/$_.qmd" })
+  # The index lists only these (se-slides.lua)
+  $env:COURSE_RELEASE = $released -join ' '
+  Write-Host "Release: $env:COURSE_RELEASE"
+} else { Remove-Item Env:COURSE_RELEASE -ErrorAction SilentlyContinue }
 if ($Strict) { $env:COURSE_STRICT = '1' } else { Remove-Item Env:COURSE_STRICT -ErrorAction SilentlyContinue }
 if ($Lenient) { $env:COURSE_LENIENT = '1' } else { Remove-Item Env:COURSE_LENIENT -ErrorAction SilentlyContinue }
 # Code results and screenshots are made on demand; -Clean makes everything again.
@@ -241,10 +270,17 @@ if ($Moodle) {
   $zip = "dist/moodle-$(Get-Date -Format yyyy-MM-dd).zip"
   $staging = '_build/moodle-bundle'
   Remove-Item -Recurse -Force $staging -ErrorAction SilentlyContinue
-  New-Item -ItemType Directory -Force "$staging/html", "$staging/pdf", "$staging/code" | Out-Null
-  Copy-Item _build/moodle/lectures/*.html "$staging/html/"
-  Copy-Item _site/pdf/*.pdf "$staging/pdf/" -ErrorAction SilentlyContinue
-  Copy-Item -Recurse code/* "$staging/code/"
+  New-Item -ItemType Directory -Force "$staging/html", "$staging/pdf" | Out-Null
+  # Only this build's lectures: _build/moodle and _site may hold others from earlier builds
+  foreach ($t in $targets) {
+    $deck = [IO.Path]::GetFileNameWithoutExtension($t)
+    Copy-Item "_build/moodle/lectures/$deck.html" "$staging/html/"
+    Copy-Item "_site/pdf/$deck.pdf" "$staging/pdf/" -ErrorAction SilentlyContinue
+  }
+  # The git-tracked code of these lectures with a VS Code workspace (no build output)
+  $decks = @($targets | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) })
+  & (Find-Java) "$PSScriptRoot/BuildCode.java" --export-code $staging @decks
+  if ($LASTEXITCODE) { exit $LASTEXITCODE }
   Write-MoodleIndex $staging (Course-Title)
   Compress-Archive -Force -Path "$staging/*" -DestinationPath $zip
   Write-Host "Moodle bundle: $zip"

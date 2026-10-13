@@ -240,9 +240,17 @@ local function lecture_entries()
   local dir = (quarto.project and quarto.project.directory) or "."
   local ok, names = pcall(pandoc.system.list_directory, dir .. "/lectures")
   if not ok then return {} end
+  -- build --release: only the released lectures (COURSE_RELEASE = their names, space-separated)
+  local released = nil
+  if os.getenv("COURSE_RELEASE") then
+    released = {}
+    for name in os.getenv("COURSE_RELEASE"):gmatch("%S+") do released[name] = true end
+  end
   local files = {}
   for _, n in ipairs(names) do
-    if n:match("^%d.*%.qmd$") then table.insert(files, n) end
+    if n:match("^%d.*%.qmd$") and (not released or released[n:gsub("%.qmd$", "")]) then
+      table.insert(files, n)
+    end
   end
   table.sort(files)
   local entries = {}
