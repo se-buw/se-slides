@@ -228,11 +228,23 @@ The course workflow (`.github/workflows/build.yml`) builds on every push and nig
 `_site/` to GitHub Pages. With the organisation's Pages domain (se-buw.de), a course repository
 `se-buw/<course>` appears at `https://se-buw.de/<course>/`.
 
-- se-slides is private, so the workflow needs a token to fetch the submodule: create a fine-grained
-  personal access token with read access to `se-buw/se-slides` and store it in the course repository
-  as secret `SE_SLIDES_TOKEN`.
+- se-slides is public, so the workflow fetches the submodule with its own token. Should it become
+  private, create a fine-grained personal access token with read access to `se-buw/se-slides` and
+  store it in the course repository as secret `SE_SLIDES_TOKEN`; the workflow uses it when present.
 - GitHub Pages from private repositories requires a paid plan (GitHub Team/Enterprise or the free
   education offer); the published site itself is public.
+
+**Through the group website instead** (intro-java: `se-buw.de/teaching/intro-java/slides/`): the course
+workflow uploads `_site` as artifact `site` (`actions/upload-artifact`, 90 days) instead of deploying
+it, and a job starts the website's workflow with `gh workflow run publish.yaml -R se-buw/se-buw.github.io
+-f intro_java_run=$GITHUB_RUN_ID`. The website's build downloads the artifact of that run (or of the
+latest successful run, for other website changes) into `static/teaching/<course>/slides/`, which is
+git-ignored there. One fine-grained token, stored in both repositories, needs Actions read on the
+course repository and Actions read/write on the website repository. The trade-off: the slides are
+built once, in the course repository, where the build is also the check, and website changes stay
+fast; but the website depends on an artifact that expires (the nightly course build renews it).
+Building the slides in the website's workflow would need no artifact, but would add Quarto, Java and
+all PDFs to every website deploy.
 
 ### Releasing lectures one by one
 
