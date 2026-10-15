@@ -78,7 +78,7 @@ return {
     if kw(kwargs, "code") == "true" then
       return pandoc.Blocks(lib.with_output(lib.listing(file, {}), file, "below"))
     end
-    return pandoc.Blocks({ lib.output(file) })
+    return pandoc.Blocks({ lib.output(file, { actions = true }) })
   end,
 
   file = function(args, kwargs, meta)

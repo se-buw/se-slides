@@ -177,7 +177,9 @@ local function output_path(inc)
 end
 
 --- The generated output of a program, jshell file or broken file, as Div.output-block.
-function M.output(path)
+-- opts.actions: add the action bar of the file, at the first line the compiler reports
+function M.output(path, opts)
+  opts = opts or {}
   local inc = M.resolve(path)
   local file = output_path(inc)
   local text = file and M.read_file(file)
@@ -188,7 +190,13 @@ function M.output(path)
   end
   local block = pandoc.CodeBlock((text:gsub("\n+$", "")),
     pandoc.Attr("", { "output" }, { ["code-line-numbers"] = "false" }))
-  return pandoc.Div({ block }, { class = "output-block" })
+  if not (opts.actions and quarto.doc.is_format("html")) then
+    return pandoc.Div({ block }, { class = "output-block" })
+  end
+  -- "UninitializedVariable.java:5: error: ..." -> line 5
+  local name = pandoc.path.filename(inc):gsub("%p", "%%%0")
+  local line = text:match("^" .. name .. ":(%d+):") or text:match("\n" .. name .. ":(%d+):")
+  return pandoc.Div({ block, action_bar(inc, tonumber(line) or 1) }, { class = "output-block listing" })
 end
 
 --- Two columns: left blocks, right blocks; split = width of the left column in %.

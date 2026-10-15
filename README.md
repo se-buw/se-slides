@@ -163,7 +163,7 @@ or no attribute for the whole file (then the file must not contain region marker
 ```{.output of=LoopQuiz.java}
 ```
 {{< jshell while.jsh >}}                  listing and transcript below (output=right / output=none, split=50)
-{{< error broken/ForScope.java >}}        compiler message (code=true: also the file)
+{{< error broken/ForScope.java >}}        compiler message, opens the file at the error line (code=true: also the file)
 {{< error warnings/StaticAccess.java >}}  compiler warning of a file in warnings/
 ````
 
