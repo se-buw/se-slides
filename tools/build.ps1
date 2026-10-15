@@ -117,7 +117,7 @@ function Export-Pdf([string[]]$targets) {
       $p = Start-Process -FilePath $browser -ArgumentList $chromeArgs -PassThru -NoNewWindow -RedirectStandardError "$profileDir.log"
       if (-not $p.WaitForExit(120000)) { Stop-Process -Id $p.Id -Force; throw "PDF export of $d timed out ($browser)" }
       if (-not (Test-Path $pdf)) { throw "PDF export failed for $d ($browser)" }
-      $pages = ([regex]::Matches([IO.File]::ReadAllText($pdf, [Text.Encoding]::Latin1), '/Type /Page[^s]')).Count
+      $pages = ([regex]::Matches([IO.File]::ReadAllText($pdf, [Text.Encoding]::GetEncoding(28591)), '/Type /Page[^s]')).Count
       if ($pages -ge $expected) { break }
       Write-Host "     only $pages of $expected pages, retrying"
     }
@@ -147,7 +147,7 @@ function Test-Layout([string[]]$targets) {
     $m = [regex]::Match([IO.File]::ReadAllText($dom), '<div id="course-layout-report" hidden="">(.*?)</div>')
     Remove-Item $dom -ErrorAction SilentlyContinue
     if (-not $m.Success) { Write-Warning "Layout check of $d produced no report"; continue }
-    $problems = @([Net.WebUtility]::HtmlDecode($m.Groups[1].Value) | ConvertFrom-Json)
+    $problems = @([Net.WebUtility]::HtmlDecode($m.Groups[1].Value) | ConvertFrom-Json | ForEach-Object { $_ })
     $lines = $problems | ForEach-Object { "slide $($_.page): $($_.problem) :: $($_.title)" }
     Set-Content -Path "_build/layout/$d.txt" -Value $lines -Encoding utf8
     if ($problems.Count) {
