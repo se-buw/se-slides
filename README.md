@@ -208,6 +208,10 @@ steps are shown at once.
 - `{{< qr var:quiz >}}` — QR code and link, URL from `_variables.yml` (`size=110` for a smaller code)
 - `[{{< qr var:quiz size=110 >}}]{.corner}` — QR code in the top right corner, next to the title
 - `{{< var semester.name >}}` — any variable from `_variables.yml`
+- `{{< file HelloWeimar >}}` — a file name in the text that opens the file in VS Code (`.java` is added
+  when there is no extension); `{{< file broken/Poster.java >}}`, `{{< file fx/Stage label=Stage >}}`
+  for other link text, `{{< file code/01-intro/ >}}` for a folder (link to `repo-url` on the web).
+  A missing file fails the build. In the PDF the link goes to `repo-url`.
 - Diagrams: ```` ```{mermaid} ```` with `%%| fig-alt: "..."` (flowcharts, class diagrams) or ```` ```{dot} ````
   (Graphviz, `//| fig-alt: "..."`). Diagrams are at most 420 px high; `::: tall` around one allows 560 px.
   Graphviz: set `//| fig-width` / `//| fig-height` to the diagram's aspect ratio (Quarto's default
@@ -219,7 +223,7 @@ steps are shown at once.
 
 In the browser: `H` or "☰ All lectures" goes back to the list of lectures, `?slide=12` after the
 deck's URL opens slide 12, `Esc` shows the slide
-overview, `S` the speaker view. "Open in VS Code" uses `vscode://file/<folder>/<file>:<line>`; local
+overview, `S` the speaker view. "Open in VS Code" (and `{{< file >}}` links) use `vscode://file/<folder>/<file>:<line>`; local
 builds use the course checkout's folder, students set the folder of their clone once with the ⚙ button
 next to a listing (stored in their browser). VS Code should have `course.code-workspace` open.
 
@@ -315,7 +319,7 @@ preview).
 ```
 _extension.yml            Quarto extension: format se-slides-revealjs, shortcodes
 se-slides.lua, lib.lua    filter: listings, output, questions, images/credits, todo, lecture list
-shortcodes.lua            {{< qr >}}, {{< jshell >}}, {{< error >}}
+shortcodes.lua            {{< qr >}}, {{< jshell >}}, {{< error >}}, {{< file >}}
 se-slides.js / .css       VS Code buttons, QR codes, layout check, home link, slide log and
                           video link; styles
 theme/se.scss             colours and sizes

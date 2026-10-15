@@ -40,6 +40,10 @@
   padding: 0.1em 0.5em;
 }
 
+/* {{< file >}}: file names in the text that open in VS Code */
+.reveal a.code-link { text-decoration: underline dotted; text-underline-offset: 0.15em; }
+.reveal a.code-link code { color: inherit; }
+
 /* Generated program output */
 .reveal pre.output, .reveal div.sourceCode.output, .reveal .output pre {
   background: var(--course-output-bg, #f3f3f0);

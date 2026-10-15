@@ -11,6 +11,11 @@ Shortcodes.
 
   {{< error broken/ForScope.java >}}    the compiler message of a file in broken/
   {{< error broken/ForScope.java code=true >}}  the file and its compiler message
+
+  {{< file HelloWeimar >}}              link that opens HelloWeimar.java in VS Code
+  {{< file broken/Poster.java >}}       any file of the deck's code folder (code/... also works)
+  {{< file fx/Stage label=Stage >}}     other link text
+  {{< file code/01-introduction/ >}}    folder (trailing /): link to the repository on the web
 ]]
 
 local lib = dofile(quarto.utils.resolve_path("lib.lua"))
@@ -74,5 +79,33 @@ return {
       return pandoc.Blocks(lib.with_output(lib.listing(file, {}), file, "below"))
     end
     return pandoc.Blocks({ lib.output(file) })
+  end,
+
+  file = function(args, kwargs, meta)
+    set_repo_url(meta)
+    local arg = pandoc.utils.stringify(args[1] or "")
+    local label = kw(kwargs, "label") or arg
+    local folder = arg:match("/$") ~= nil
+    local path = arg
+    if not folder and not pandoc.path.filename(arg):match("%.") then path = arg .. ".java" end
+    local inc = lib.resolve(path)
+    local exists
+    if folder then
+      exists = pcall(pandoc.system.list_directory, pandoc.path.join({ lib.root, inc }))
+    else
+      exists = lib.read_file(inc) ~= nil
+    end
+    if not exists then lib.fail("file: " .. inc .. " not found") end
+    if not quarto.doc.is_format("html") then return pandoc.Code(label) end
+    local code = "<code>" .. lib.html_escape(label) .. "</code>"
+    if folder then
+      if not lib.repo_url then return pandoc.Code(label) end
+      return pandoc.RawInline("html", string.format('<a class="code-link" href="%s/tree/main/%s">%s</a>',
+        lib.html_escape(lib.repo_url), lib.html_escape(inc:gsub("/$", "")), code))
+    end
+    local href = lib.repo_url and (lib.html_escape(lib.repo_url) .. "/blob/main/" .. lib.html_escape(inc)) or "#"
+    return pandoc.RawInline("html", string.format(
+      '<a class="vscode-open code-link" href="%s" data-file="%s" data-line="1" title="Open in VS Code">%s</a>',
+      href, lib.html_escape(inc), code))
   end,
 }
