@@ -1,6 +1,6 @@
 title: SE Slides
 author: Software Engineering Group, Bauhaus-Universität Weimar
-version: 1.4.0
+version: 1.5.0
 quarto-required: ">=1.6.0"
 contributes:
   shortcodes:
@@ -27,3 +27,9 @@ contributes:
       menu: false
       mermaid:
         theme: neutral
+    # The list of lectures (index.qmd): a plain web page,   format: se-slides-html
+    html:
+      filters:
+        - se-slides.lua
+      css: index.css
+      toc: false

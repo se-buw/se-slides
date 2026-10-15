@@ -1,11 +1,13 @@
 ---
 title: "{{< var course.title >}}"
 subtitle: "{{< var semester.name >}} · Bauhaus-Universität Weimar"
+format: se-slides-html
 ---
 
 ## Lectures
 
-All slides as HTML (open in the browser; code listings have copy and "Open in VS Code" buttons) and PDF.
+Slides as HTML (code listings have copy and "Open in VS Code" buttons) and PDF.
+Type a slide number next to a lecture to continue there.
 Example code: folder `code/` of the course repository.
 
 ::: {#lectures}

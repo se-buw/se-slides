@@ -133,8 +133,6 @@ function Test-Layout([string[]]$targets) {
   $profileDir = Join-Path ([IO.Path]::GetTempPath()) 'se-slides-layout-profile'
   New-Item -ItemType Directory -Force '_build/layout' | Out-Null
   $decks = if ($targets.Count) { $targets | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) } } else { All-Decks }
-  # the index page is a deck, too (its lecture list is split across slides)
-  if (Test-Path '_site/index.html') { $decks = @($decks) + 'index' }
   $total = 0
   foreach ($d in $decks) {
     $file = if ($d -eq 'index') { '_site/index.html' } else { "_site/lectures/$d.html" }
@@ -159,54 +157,6 @@ function Test-Layout([string[]]$targets) {
     $total += $problems.Count
   }
   return $total
-}
-
-# index.html of the Moodle bundle: the decks link back to ../index.html
-function Write-MoodleIndex([string]$staging, [string]$courseTitle) {
-  $rows = foreach ($f in Get-ChildItem "$staging/html" -Filter '*.html' | Sort-Object Name) {
-    $qmd = "lectures/$($f.BaseName).qmd"
-    $title = $f.BaseName
-    if (Test-Path $qmd) {
-      $m = Select-String -Path $qmd -Pattern '^title:\s*"?(.*?)"?\s*$' | Select-Object -First 1
-      if ($m) { $title = $m.Matches[0].Groups[1].Value }
-    }
-    $pdf = if (Test-Path "$staging/pdf/$($f.BaseName).pdf") { "<a href=""pdf/$($f.BaseName).pdf"">PDF</a>" } else { '' }
-    # recordings from tools/video.ps1, as in the index of the website
-    $ids = @()
-    if (Test-Path "lectures/$($f.BaseName).video.json") {
-      $ids = @((Get-Content -Raw "lectures/$($f.BaseName).video.json" | ConvertFrom-Json).videos |
-          Where-Object { $_.id -and $_.id -ne 'TODO' } | ForEach-Object id)
-    }
-    $n = 0
-    $video = ($ids | ForEach-Object {
-        $n++
-        "<a href=""https://youtu.be/$([Net.WebUtility]::HtmlEncode($_))"" target=""_blank"">$(if ($ids.Count -eq 1) { 'Video' } else { $n })</a>"
-      }) -join ' '
-    "<tr><td>$($f.BaseName.Substring(0, 2))</td><td><a href=""html/$($f.Name)"">$([Net.WebUtility]::HtmlEncode($title))</a></td><td>$pdf</td><td>$video</td></tr>"
-  }
-  $t = [Net.WebUtility]::HtmlEncode($courseTitle)
-  $html = @"
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>$t</title>
-<style>
-body { font-family: "Segoe UI", Arial, sans-serif; max-width: 760px; margin: 2em auto; padding: 0 16px; color: #1a1a1a; }
-table { border-collapse: collapse; width: 100%; } td { padding: .4em .6em; border-bottom: 1px solid #ddd; }
-a { color: #1d4e89; }
-</style></head><body>
-<h1>$t</h1>
-<p>Slides as HTML (code listings with copy buttons) and PDF. Example code: folder <code>code/</code>.</p>
-<table>
-$($rows -join "`n")
-</table>
-</body></html>
-"@
-  Set-Content -Path "$staging/index.html" -Value $html -Encoding utf8
-}
-
-function Course-Title {
-  $m = Select-String -Path '_quarto.yml' -Pattern '^\s+title:\s*"?(.*?)"?\s*$' | Select-Object -First 1
-  if ($m) { return $m.Matches[0].Groups[1].Value } else { return 'Slides' }
 }
 
 $quarto = Find-Quarto
@@ -260,28 +210,27 @@ if ($Moodle) {
   # Self-contained HTML files without the local VS Code path and without layout marks
   $env:COURSE_VSCODE_ROOT = ''
   Remove-Item Env:COURSE_LAYOUT_MARKS -ErrorAction SilentlyContinue
-  $moodleTargets = if ($targets.Count) { $targets } else { @($null) }
-  foreach ($t in $moodleTargets) {
-    if ($t) { & $quarto render $t --output-dir _build/moodle -M embed-resources:true }
-    else { & $quarto render --output-dir _build/moodle -M embed-resources:true }
+  # -Moodle implies -Release, so the lectures are named; the index lists them (se-slides.lua)
+  foreach ($t in @($targets) + 'index.qmd') {
+    & $quarto render $t --output-dir _build/moodle -M embed-resources:true
     if ($LASTEXITCODE) { exit $LASTEXITCODE }
   }
   New-Item -ItemType Directory -Force dist | Out-Null
   $zip = "dist/moodle-$(Get-Date -Format yyyy-MM-dd).zip"
   $staging = '_build/moodle-bundle'
   Remove-Item -Recurse -Force $staging -ErrorAction SilentlyContinue
-  New-Item -ItemType Directory -Force "$staging/html", "$staging/pdf" | Out-Null
+  New-Item -ItemType Directory -Force "$staging/lectures", "$staging/pdf" | Out-Null
   # Only this build's lectures: _build/moodle and _site may hold others from earlier builds
   foreach ($t in $targets) {
     $deck = [IO.Path]::GetFileNameWithoutExtension($t)
-    Copy-Item "_build/moodle/lectures/$deck.html" "$staging/html/"
+    Copy-Item "_build/moodle/lectures/$deck.html" "$staging/lectures/"
     Copy-Item "_site/pdf/$deck.pdf" "$staging/pdf/" -ErrorAction SilentlyContinue
   }
   # The git-tracked code of these lectures with a VS Code workspace (no build output)
   $decks = @($targets | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) })
   & (Find-Java) "$PSScriptRoot/BuildCode.java" --export-code $staging @decks
   if ($LASTEXITCODE) { exit $LASTEXITCODE }
-  Write-MoodleIndex $staging (Course-Title)
+  Copy-Item '_build/moodle/index.html' $staging
   Compress-Archive -Force -Path "$staging/*" -DestinationPath $zip
   Write-Host "Moodle bundle: $zip"
 }

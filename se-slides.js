@@ -118,7 +118,7 @@
   }
 
   // Way back to the list of all lectures: link in the bottom left corner and key H.
-  // Decks live in lectures/ (website) or html/ (Moodle bundle); the list is one level up.
+  // Decks live in lectures/ (website and Moodle bundle); the list is one level up.
   const HOME = "../index.html";
   whenReveal(function () {
     if (document.documentElement.classList.contains("print-pdf") || /print-pdf/.test(location.search)) return;
@@ -130,6 +130,18 @@
     document.querySelector(".reveal").appendChild(link);
     window.Reveal.addKeyBinding({ keyCode: 72, key: "H", description: "All lectures" },
       function () { window.location.href = HOME; });
+  });
+
+  // deck.html?slide=12 (slide box on the list of lectures): open the deck at slide 12 as numbered
+  // in the corner. Reveal's #/h/v hash counts sections, not slides. The query is removed again,
+  // so that reloading keeps the current slide.
+  whenReveal(function () {
+    const n = parseInt(new URLSearchParams(location.search).get("slide"), 10);
+    if (!(n > 0)) return;
+    history.replaceState(null, "", location.pathname + location.hash);
+    const slides = window.Reveal.getSlides();
+    const i = window.Reveal.getIndices(slides[Math.min(n, slides.length) - 1]);
+    window.Reveal.slide(i.h, i.v);
   });
 
   function printView() {

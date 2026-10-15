@@ -232,10 +232,8 @@ local function embed_videos()
   quarto.doc.include_text("after-body", '<script type="application/json" id="course-video">' .. json .. "</script>")
 end
 
--- Index page: `::: {#lectures}` becomes a table of all lectures (title, subtitle, PDF), read from the
--- front matter of lectures/[0-9]*.qmd. Long lists continue on further slides; the budget is in
--- table lines per slide (metadata lectures-per-slide, default 12), a row counts one line per 70
--- characters of its subtitle, the first slide has 2 lines less for the text above the table.
+-- Index page (format se-slides-html): `::: {#lectures}` becomes a table of all lectures (number,
+-- title, slide box, subtitle, PDF, videos), read from the front matter of lectures/[0-9]*.qmd.
 local function lecture_entries()
   local dir = (quarto.project and quarto.project.directory) or "."
   local ok, names = pcall(pandoc.system.list_directory, dir .. "/lectures")
@@ -263,6 +261,7 @@ local function lecture_entries()
     local name = n:gsub("%.qmd$", "")
     table.insert(entries, {
       name = name,
+      number = name:match("^%d+%a*"),
       title = meta.title and pandoc.utils.stringify(meta.title) or name,
       subtitle = meta.subtitle and pandoc.utils.stringify(meta.subtitle) or "",
       videos = deck_videos(name),
@@ -280,70 +279,37 @@ local function new_tab(el)
   return el
 end
 
--- links to the recordings of a lecture: "Video", or "1 2" for a lecture in several recordings
-local function video_links(videos)
-  local inlines = {}
-  for i, v in ipairs(videos) do
-    if i > 1 then table.insert(inlines, pandoc.Space()) end
-    table.insert(inlines, new_tab(pandoc.Link(#videos == 1 and "Video" or tostring(i), "https://youtu.be/" .. v.id)))
-  end
-  return inlines
-end
+-- The deck link opens in the same tab (H in the deck leads back), PDF and videos in a new one.
+-- The slide box submits deck.html?slide=n; se-slides.js opens the deck at that slide.
+local NEW_TAB = ' target="_blank" rel="noopener noreferrer"'
 
--- with_video: the Video column, shown as soon as any lecture has a recording
-local function lecture_table(entries, with_video)
-  local function cell(inlines) return { pandoc.Plain(inlines) } end
-  local rows = {}
-  for _, e in ipairs(entries) do
-    local row = {
-      cell({ new_tab(pandoc.Link(e.title, "lectures/" .. e.name .. ".html")) }),
-      cell({ pandoc.Str(e.subtitle) }),
-      cell({ new_tab(pandoc.Link("PDF", "pdf/" .. e.name .. ".pdf")) }),
-    }
-    if with_video then table.insert(row, cell(video_links(e.videos))) end
-    table.insert(rows, row)
-  end
-  local align = { pandoc.AlignDefault, pandoc.AlignDefault, pandoc.AlignDefault }
-  local widths = { 0.3, 0.6, 0.1 }
-  local head = { cell({ pandoc.Str("Lecture") }), cell({ pandoc.Str("Topics") }), cell({ pandoc.Str("PDF") }) }
-  if with_video then
-    table.insert(align, pandoc.AlignDefault)
-    widths = { 0.28, 0.52, 0.08, 0.12 }
-    table.insert(head, cell({ pandoc.Str("Video") }))
-  end
-  return pandoc.utils.from_simple_table(pandoc.SimpleTable({}, align, widths, head, rows))
-end
-
-local function lecture_slides(doc)
-  local at
-  for i, b in ipairs(doc.blocks) do
-    if b.t == "Div" and b.identifier == "lectures" then at = i break end
-  end
-  if not at then return end
-  local budget = tonumber(doc.meta["lectures-per-slide"] and pandoc.utils.stringify(doc.meta["lectures-per-slide"])) or 12
-  local chunks, current, used, limit = {}, {}, 0, budget - 2
+local function lecture_list(el)
+  if el.identifier ~= "lectures" then return nil end
   local entries = lecture_entries()
-  local with_video = false
+  local with_video = false -- Video column as soon as any lecture has a recording
   for _, e in ipairs(entries) do
     if #e.videos > 0 then with_video = true end
   end
+  local esc = lib.html_escape
+  local rows = { '<table class="lectures"><thead><tr><th>No.</th><th>Lecture</th><th>Slide</th><th>Topics</th><th>PDF</th>'
+    .. (with_video and "<th>Video</th>" or "") .. "</tr></thead><tbody>" }
   for _, e in ipairs(entries) do
-    local lines = math.max(1, math.ceil(#e.subtitle / 70))
-    if #current > 0 and used + lines > limit then
-      table.insert(chunks, current)
-      current, used, limit = {}, 0, budget
+    local deck = "lectures/" .. e.name .. ".html"
+    local row = string.format('<tr><td>%s</td><td><a href="%s">%s</a></td><td><form action="%s">'
+      .. '<input name="slide" type="number" min="1" aria-label="%s at slide"></form></td>'
+      .. '<td>%s</td><td><a href="pdf/%s.pdf"%s>PDF</a></td>',
+      esc(e.number or ""), deck, esc(e.title), deck, esc(e.title), esc(e.subtitle), e.name, NEW_TAB)
+    if with_video then
+      local links = {}
+      for i, v in ipairs(e.videos) do
+        links[i] = string.format('<a href="https://youtu.be/%s"%s>%s</a>', v.id, NEW_TAB, #e.videos == 1 and "Video" or i)
+      end
+      row = row .. "<td>" .. table.concat(links, " ") .. "</td>"
     end
-    table.insert(current, e)
-    used = used + lines
+    table.insert(rows, row .. "</tr>")
   end
-  if #current > 0 then table.insert(chunks, current) end
-  local blocks = {}
-  for i, c in ipairs(chunks) do
-    if i > 1 then table.insert(blocks, pandoc.Header(2, "Lectures (continued)")) end
-    table.insert(blocks, lecture_table(c, with_video))
-  end
-  doc.blocks:remove(at)
-  for i = #blocks, 1, -1 do doc.blocks:insert(at, blocks[i]) end
+  table.insert(rows, "</tbody></table>")
+  return pandoc.RawBlock("html", table.concat(rows, "\n"))
 end
 
 return {
@@ -355,10 +321,11 @@ return {
   },
   { CodeBlock = CodeBlock, Image = Image },
   { Div = Div },
+  { Div = lecture_list },
   { Link = new_tab },
   {
     Pandoc = function(doc)
-      if quarto.doc.is_format("html") then
+      if quarto.doc.is_format("revealjs") then
         quarto.doc.add_html_dependency({
           name = "se-slides",
           version = "1.0.0",
@@ -379,7 +346,6 @@ return {
       if todo_count > 0 then
         quarto.log.warning("[course] " .. todo_count .. " todo block(s) in " .. quarto.doc.input_file)
       end
-      lecture_slides(doc)
       doc.blocks:extend(credits_slide())
       return doc
     end,

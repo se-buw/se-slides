@@ -1,0 +1,8 @@
+/* List of lectures (index.qmd, format se-slides-html; table from se-slides.lua) */
+@font-face { font-family: "Jost"; src: url("fonts/Jost.ttf"); font-weight: 100 900; }
+body { font-family: "Jost", "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #1a1a1a; }
+a { color: #1d4e89; }
+table.lectures { width: 100%; border-collapse: collapse; }
+table.lectures th, table.lectures td { padding: .3em .5em; border-bottom: 1px solid #ddd; vertical-align: baseline; text-align: left; }
+table.lectures td:first-child, table.lectures td:nth-child(4) { color: #555; }
+table.lectures input { width: 4em; font: inherit; font-size: .85em; padding: 0 .3em; }

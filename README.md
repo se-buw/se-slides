@@ -100,7 +100,7 @@ Registration        Registration   text=Gunta fire="Pottery"
 Layout: a slide whose content runs into the footer, or whose listing is clipped or too wide, is a
 layout problem. Three switches, independent of each other:
 
-- `-Layout` (also part of `-Pdf`, `-Moodle` and `-Strict`) checks every deck and the index page in a
+- `-Layout` (also part of `-Pdf`, `-Moodle` and `-Strict`) checks every deck in a
   headless browser and lists the problems (slide number and title) on the console and in
   `_build/layout/<deck>.txt`. It only reports.
 - `-Strict` fails the build if that list is not empty.
@@ -108,16 +108,16 @@ layout problem. Three switches, independent of each other:
   label, for fixing them in the browser. The setting is baked into the HTML: rebuild without it
   before presenting. The Moodle bundle never has marks.
 
-The index page lists all lectures (title, subtitle from the front matter, PDF link) and continues on
-further slides when the list is long; `lectures-per-slide: 12` in its front matter sets the budget in
-table lines per slide.
+The index page (`format: se-slides-html`, a plain web page) lists all lectures: number, title,
+subtitle from the front matter, PDF and video links, and a box to open the deck at a slide number
+(`lectures/05-loops.html?slide=12`).
 
 ## Course layout
 
 ```
 _quarto.yml               project settings; format: se-slides-revealjs (+ course-specific options)
 _variables.yml            course title, semester data, quiz link; never passwords or access codes
-index.qmd                 list of lectures (HTML and PDF links)
+index.qmd                 list of lectures, format: se-slides-html (HTML and PDF links)
 lectures/NN-topic.qmd     slides of one lecture
 code/NN-topic/            examples of that lecture
   X.java                  compilable example (class names may repeat in other lectures)
@@ -217,7 +217,8 @@ steps are shown at once.
 - A code block in braces must start with a class (`{.text include=...}`, not `{include=...}`);
   otherwise Quarto treats it as an executable cell
 
-In the browser: `H` or "☰ All lectures" goes back to the list of lectures, `Esc` shows the slide
+In the browser: `H` or "☰ All lectures" goes back to the list of lectures, `?slide=12` after the
+deck's URL opens slide 12, `Esc` shows the slide
 overview, `S` the speaker view. "Open in VS Code" uses `vscode://file/<folder>/<file>:<line>`; local
 builds use the course checkout's folder, students set the folder of their clone once with the ⚙ button
 next to a listing (stored in their browser). VS Code should have `course.code-workspace` open.
