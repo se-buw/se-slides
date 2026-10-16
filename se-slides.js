@@ -220,8 +220,10 @@
 
   // "▶ Video" link and key Y: the lecture recording at the current slide. The times come from
   // lectures/<deck>.video.json (tools/video.ps1), embedded by se-slides.lua as #course-video.
-  // A slide that was not shown in a recording links to the closest earlier one.
+  // A slide that was not shown in a recording links to the closest earlier one. The lecture ends at the
+  // last slide shown for MIN_SHOWN s: later slides (flipped to at the end, next week's) get no link.
   // #course-video comes after Reveal.initialize in the page: wait for the whole document, too.
+  const MIN_SHOWN = 10;
   function whenParsed(fn) {
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", fn);
     else fn();
@@ -234,9 +236,15 @@
     let videos = [];
     try { videos = JSON.parse(data.textContent).videos || []; } catch (e) { return; }
     if (!videos.length) return;
+    const slides = deck.getSlides();
+    let end = -1;
+    slides.forEach(function (s, i) {
+      if (videos.some(function (v) { const t = v.slides && v.slides[s.id]; return t && t[1] >= MIN_SHOWN; })) end = i;
+    });
     function target(slide) {
-      const slides = deck.getSlides();
-      for (let i = slides.indexOf(slide); i >= 0; i--) {
+      const at = slides.indexOf(slide);
+      if (at > end) return null;
+      for (let i = at; i >= 0; i--) {
         let best = null;
         videos.forEach(function (v) {
           const s = v.slides && v.slides[slides[i].id]; // [seconds, length of the visit]
@@ -253,11 +261,15 @@
     link.target = "_blank";
     link.rel = "noopener noreferrer";
     document.querySelector(".reveal").appendChild(link);
-    function update() { link.href = target(deck.getCurrentSlide()); }
+    function update() {
+      const href = target(deck.getCurrentSlide());
+      link.hidden = !href;
+      if (href) link.href = href;
+    }
     update();
     deck.on("slidechanged", update);
     deck.addKeyBinding({ keyCode: 89, key: "Y", description: "Lecture recording at this slide" },
-      function () { update(); window.open(link.href, "_blank", "noopener"); });
+      function () { update(); if (!link.hidden) window.open(link.href, "_blank", "noopener"); });
   }
 
   whenReveal(function () {

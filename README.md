@@ -299,15 +299,20 @@ How the times are found:
   `COURSE_RECORDINGS` for another folder, or `-Recording <file>`. `-Start`/`-End` set the window by
   hand.
 - **What is ignored:** going through the slides before or after the recording. The slide on screen
-  when the recording starts counts from 0:00.
+  when the recording starts counts from 0:00. A recording only counts if the deck's slides changed
+  during it: a deck left open in the browser during another lecture is not matched.
 - **Longest visit:** a slide links to its longest visit, so flipping through slides, previewing one
   and short recaps don't move the link. A reload or a closed and reopened deck doesn't split a visit.
+- **End of the lecture:** the last slide shown for at least 10 s. Slides after it (flipped to at the
+  end, covered next week) get no video link until a later recording shows them.
 - **Other decks:** switching to another deck in between is fine.
 - **Several recordings:** a lecture recorded in several files (OBS restarted, or two sessions) gets
   one video per file. `-Id` takes their links in recording order.
 - **Chapters:** each section and each slide shown for at least 60 s (`-MinChapter`). A slide the
   lecture comes back to gets `↩`.
-- **Running it again** is safe: video IDs are kept. `-Id` also corrects IDs.
+- **Running it again** is safe: video IDs are kept. `-Id` also corrects IDs and prints the chapters
+  only for recordings that are new. A recording without an ID that no longer shows the deck is
+  removed.
 
 Don't pause the recording (it shifts all later times; stop and start a new one instead), don't
 present in a private window (its log is gone when it closes) and export the log within 14 days.

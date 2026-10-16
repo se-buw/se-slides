@@ -241,7 +241,10 @@ $visits = Get-Visits $entries
 $results = @()
 foreach ($r in ($recordings | Sort-Object start)) {
   $s = To-Ms $r.start
-  $dv = @(Get-DeckVisits $visits $s (To-Ms $r.end))
+  $e = To-Ms $r.end
+  # the deck was used during the recording, not just left open on one slide
+  if (-not @($deckEntries | Where-Object { [long]$_.t -ge $s -and [long]$_.t -lt $e }).Count) { continue }
+  $dv = @(Get-DeckVisits $visits $s $e)
   $shown = ($dv | ForEach-Object { $_.b - $_.a } | Measure-Object -Sum).Sum / 1000
   if ($shown -lt $MinChapter) { continue }
   $results += [pscustomobject]@{
@@ -261,18 +264,28 @@ if (-not $results.Count) {
   }
 }
 
+# recordings without an ID that no longer show the deck (e.g. matched by an older version of this script)
+$matched = @($results | ForEach-Object recording)
+foreach ($v in @($videos | Where-Object { $_.id -eq 'TODO' -and $_.recording -notin $matched -and $_.recording -in @($recordings | ForEach-Object recording) })) {
+  [void]$videos.Remove($v)
+  Write-Host "Removed $($v.recording) (no longer shows $deck)"
+}
+
 $clip = @()
 foreach ($r in $results) {
   $chapters = $r.chapters
+  $old = $videos | Where-Object { $_.recording -eq $r.recording } | Select-Object -First 1
   Write-Host ""
   Write-Host "Recording $($r.recording) ($(Format-Time $r.length)): $deck shown $(Format-Time $r.shown), $($r.slides.Count) slides, $($chapters.Count) chapters" -ForegroundColor Cyan
-  $chapters | ForEach-Object { Write-Host "  $_" }
-  if ($chapters.Count -lt 3) { Write-Warning "YouTube needs at least 3 chapters (lower -MinChapter, now $MinChapter s)." }
-  if ($results.Count -gt 1) { $clip += "--- $($r.recording)" }
-  $clip += $chapters
-  if ($results.Count -gt 1) { $clip += '' }
+  # with -Id the chapters of a known recording were printed before (and are in the description)
+  if (-not ($Id.Count -and $old)) {
+    $chapters | ForEach-Object { Write-Host "  $_" }
+    if ($chapters.Count -lt 3) { Write-Warning "YouTube needs at least 3 chapters (lower -MinChapter, now $MinChapter s)." }
+    if ($results.Count -gt 1) { $clip += "--- $($r.recording)" }
+    $clip += $chapters
+    if ($results.Count -gt 1) { $clip += '' }
+  }
 
-  $old = $videos | Where-Object { $_.recording -eq $r.recording } | Select-Object -First 1
   if ($old) { $old.slides = $r.slides }
   else { $videos.Add([ordered]@{ id = 'TODO'; recording = $r.recording; slides = $r.slides }) }
 }
@@ -303,6 +316,7 @@ if (Test-Path $html) {
 Write-Host "Wrote $jsonPath"
 $open = @($videos | Where-Object { $_.id -eq 'TODO' })
 if ($open.Count) {
+  Write-Host "Without a video ID: $(($open | ForEach-Object recording) -join ', ')"
   Write-Host "Next: upload the recording to YouTube, paste the chapters into the description, then  ./video.ps1 $Lecture -Id <link>"
 } else {
   Write-Host "Next: commit $jsonPath; the build adds the video links to the slides and the lecture list."
