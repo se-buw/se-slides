@@ -259,7 +259,9 @@
     link.title = "This slide in the lecture recording (Y)";
     link.textContent = "▶ Video";
     link.target = "_blank";
-    link.rel = "noopener noreferrer";
+    // no "noreferrer": YouTube Studio then counts these views as External from the course site (the
+    // origin only, not the deck); the lecture table keeps noreferrer so slide clicks stand apart
+    link.rel = "noopener";
     document.querySelector(".reveal").appendChild(link);
     function update() {
       const href = target(deck.getCurrentSlide());
