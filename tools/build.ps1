@@ -103,7 +103,7 @@ function Export-Pdf([string[]]$targets) {
     if ($browser -notmatch 'chrome-headless-shell') { $chromeArgs = @('--headless=new') + $chromeArgs }
     # Start-Process does not quote: quote arguments with spaces (course folders with spaces)
     $chromeArgs = $chromeArgs | ForEach-Object { if ($_ -match ' ') { '"' + $_ + '"' } else { $_ } }
-    # a browser that hangs must not block a nightly build
+    # a browser that hangs must not block a build
     # The browser occasionally prints before the slides are laid out (a 1-page PDF):
     # compare the page count with the number of slides and retry (up to 4 attempts).
     # headings outside code fences, without hidden slides (they are not printed)

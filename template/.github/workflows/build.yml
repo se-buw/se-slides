@@ -4,8 +4,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  schedule:
-    - cron: "0 2 * * *"   # nightly, 02:00 UTC
 
 permissions:
   contents: read
@@ -31,12 +29,6 @@ jobs:
           version: "1.10.18"
       - name: Build HTML and PDF
         run: ./build.sh --pdf --strict
-      - name: Check links
-        uses: lycheeverse/lychee-action@v2
-        with:
-          # YouTube answers link checkers with 429 or a consent page
-          args: --no-progress --exclude "^vscode:" --exclude "^https://(www\.)?youtu" "_site/**/*.html"
-          fail: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

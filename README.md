@@ -229,9 +229,18 @@ next to a listing (stored in their browser). VS Code should have `course.code-wo
 
 ## Publishing
 
-The course workflow (`.github/workflows/build.yml`) builds on every push and nightly and deploys
+The course workflow (`.github/workflows/build.yml`) builds on every push and deploys
 `_site/` to GitHub Pages. With the organisation's Pages domain (se-buw.de), a course repository
 `se-buw/<course>` appears at `https://se-buw.de/<course>/`.
+
+The workflow does not check links: an external site that is down for a moment must not keep the
+slides from the students. Check them locally after a build, e.g. with [lychee](https://lychee.cli.rs/)
+(YouTube answers link checkers with 429 or a consent page; also exclude the students' code
+repository, whose new files appear there only when publishing):
+
+```
+lychee --exclude "^vscode:" --exclude "^https://(www\.)?youtu" "_site/**/*.html"
+```
 
 - se-slides is public, so the workflow fetches the submodule with its own token. Should it become
   private, create a fine-grained personal access token with read access to `se-buw/se-slides` and
@@ -239,17 +248,9 @@ The course workflow (`.github/workflows/build.yml`) builds on every push and nig
 - GitHub Pages from private repositories requires a paid plan (GitHub Team/Enterprise or the free
   education offer); the published site itself is public.
 
-**Through the group website instead** (intro-java: `se-buw.de/teaching/intro-java/slides/`): the course
-workflow uploads `_site` as artifact `site` (`actions/upload-artifact`, 90 days) instead of deploying
-it, and a job starts the website's workflow with `gh workflow run publish.yaml -R se-buw/se-buw.github.io
--f intro_java_run=$GITHUB_RUN_ID`. The website's build downloads the artifact of that run (or of the
-latest successful run, for other website changes) into `static/teaching/<course>/slides/`, which is
-git-ignored there. One fine-grained token, stored in both repositories, needs Actions read on the
-course repository and Actions read/write on the website repository. The trade-off: the slides are
-built once, in the course repository, where the build is also the check, and website changes stay
-fast; but the website depends on an artifact that expires (the nightly course build renews it).
-Building the slides in the website's workflow would need no artifact, but would add Quarto, Java and
-all PDFs to every website deploy.
+**Through another website instead:** the course workflow can upload `_site` as a workflow artifact
+instead of deploying it, and the website's build fetches it. intro-java does this for se-buw.de; its
+README describes the setup.
 
 ### Releasing lectures one by one
 
@@ -268,8 +269,7 @@ all PDFs to every website deploy.
 **Students' code repository.** A job `publish-code` in the workflow exports the released code to a
 public repository (e.g. `se-buw/<course>-code`) and commits only when something changed ("Release
 06-methods" when a lecture is added). Set `repo-url` in `_quarto.yml` to that repository for "web"
-links next to listings (`<repo-url>/blob/main/code/...`); exclude it from the link check, since new
-files arrive there only after the check. Setup once:
+links next to listings (`<repo-url>/blob/main/code/...`). Setup once:
 
 1. Create the repository with an initial commit on `main`.
 2. `ssh-keygen -t ed25519 -N "" -f deploy-key`: add `deploy-key.pub` to the code repository as
