@@ -199,6 +199,27 @@ second; the answer is also copied into the speaker notes. `::: {.question answer
 answer in a column next to the rest (`split=55` sets the width of the left column). In the PDF all
 steps are shown at once.
 
+### Quiz questions for Particify
+
+If the course has a folder `particify/`, the build writes `particify/<deck>.csv` from the deck's quiz
+slides: a Particify question series in the format of Particify's export (UTF-16, tab-separated), ready to
+import. Commit these files; they contain the correct answers, so they are not published.
+
+A quiz slide is a slide with `{{< qr var:quiz >}}`; one slide is one question:
+
+| Slide | Question |
+|---|---|
+| `## Your turn`, a paragraph | free text; the paragraph is the question |
+| `## Your turn`, a paragraph, a bullet list | poll; the list items are the options |
+| `## Title`, `::: question` | free text; the title is the question |
+| `## Title`, `::: question` with a bullet list | choice; the list items (outside `::: answer`) are the options |
+
+- Mark correct options with `- [`2`]{.correct}` (shown as normal text). Two or more: multiple choice.
+  A yes/no question lists `- yes` and `- [no]{.correct}`.
+- `## Your turn {particify=wordcloud}`, `{particify=scale}` (agreement, 5 steps), `{particify=rank}`
+  (rank the list items).
+- Questions are plain text (no formatting). Titles of quiz slides must be unique within a deck.
+
 ### Other building blocks
 
 - `::: tip`, `::: pitfall`, `::: java25` — coloured boxes; `::: {.java25 since=16}` for a modern
@@ -330,7 +351,8 @@ se-slides.js / .css       VS Code buttons, QR codes, layout check, home link, sl
 theme/se.scss             colours and sizes
 fonts/, brand/            Jost, JetBrains Mono (OFL); group logo and favicon
 tools/                    build.ps1/.sh, BuildCode.java, EchoRunner.java, prerender.ts,
-                          bootstrap.ps1, new-course.ps1, video.ps1 (lecture recordings)
+                          bootstrap.ps1, new-course.ps1, video.ps1 (lecture recordings),
+                          particify.lua (quiz questions as Particify CSV, run by prerender.ts)
 template/                 skeleton of a new course
 ```
 
