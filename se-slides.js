@@ -1,5 +1,13 @@
 // "Open in VS Code" buttons and QR codes.
 (function () {
+  // PDF export (tools/build.ps1): Reveal lays out the print view across several animation frames,
+  // but headless Chrome with --virtual-time-budget prints without waiting for frames. Light decks
+  // (no diagrams) then came out as one blank page. Timers run on virtual time, so the budget covers them.
+  if (/HeadlessChrome/.test(navigator.userAgent) && /print-pdf/.test(location.search)) {
+    window.requestAnimationFrame = function (cb) { return setTimeout(function () { cb(performance.now()); }, 16); };
+    window.cancelAnimationFrame = function (id) { clearTimeout(id); };
+  }
+
   const KEY = "course.vscodeRoot";
 
   function storedRoot() {
