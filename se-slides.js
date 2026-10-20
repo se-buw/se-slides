@@ -8,6 +8,24 @@
     window.cancelAnimationFrame = function (id) { clearTimeout(id); };
   }
 
+  // Mermaid diagrams (Quarto renders them on load) size their label boxes with getBoundingClientRect,
+  // which includes Reveal's scaling of the slides: at scale 0.94 (margin 0.06) every box came out 6 %
+  // too small and labels ran over or were cut ("previous statemen"). Render them unscaled, then let
+  // Reveal scale again. This listener is registered before Quarto's (script order), so it runs first.
+  window.addEventListener("load", function () {
+    if (!document.querySelector("pre.mermaid-js")) return;
+    const unscaled = document.createElement("style");
+    unscaled.textContent = ".reveal .slides { transform: none !important; zoom: 1 !important; }";
+    document.head.appendChild(unscaled);
+    let tries = 0;
+    (function rescale() {
+      // Quarto replaces each pre.mermaid-js by its SVG; give up after 10 s (a broken diagram)
+      if (document.querySelector("pre.mermaid-js") && ++tries < 200) return setTimeout(rescale, 50);
+      unscaled.remove();
+      if (window.Reveal && window.Reveal.layout) window.Reveal.layout();
+    })();
+  });
+
   const KEY = "course.vscodeRoot";
 
   function storedRoot() {

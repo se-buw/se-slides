@@ -236,7 +236,8 @@ A quiz slide is a slide with `{{< qr var:quiz >}}`; one slide is one question:
 - Diagrams: ```` ```{mermaid} ```` with `%%| fig-alt: "..."` (flowcharts, class diagrams) or ```` ```{dot} ````
   (Graphviz, `//| fig-alt: "..."`). Diagrams are at most 420 px high; `::: tall` around one allows 560 px.
   Graphviz: set `//| fig-width` / `//| fig-height` to the diagram's aspect ratio (Quarto's default
-  box is 960×480) and use `fontname="Jost"` (other fonts are measured too narrow).
+  box is 960×480) and use `fontname="Arial"`: Graphviz lays the labels out with Arial's widths, and
+  the slides draw them in Jost (Graphviz has no widths for Jost and measures it too narrow).
 - Custom columns: `:::: columns` / `::: {.column width="55%"}`
 - Line highlighting steps, only where they help: `code-line-numbers="|3|5-7"` on a listing
 - A code block in braces must start with a class (`{.text include=...}`, not `{include=...}`);

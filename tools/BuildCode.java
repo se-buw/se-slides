@@ -686,10 +686,13 @@ public class BuildCode {
             Path gradlew = src.resolve(windows ? "gradlew.bat" : "gradlew");
             if (Files.exists(gradlew)) {
                 System.out.println("BuildCode: gradlew javafxModules in " + ROOT.relativize(src));
-                Process p = new ProcessBuilder(gradlew.toString(), "javafxModules", "-q")
-                        .directory(src.toFile()).redirectErrorStream(true).start();
-                String log = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-                if (p.waitFor() != 0) System.out.println(indent(log));
+                // no daemon: on Windows it inherits our output handle and keeps it open, and Quarto then
+                // waits for the end of our output forever
+                Path out = Files.createTempFile("gradlew", ".log");
+                Process p = new ProcessBuilder(gradlew.toString(), "javafxModules", "-q", "--no-daemon")
+                        .directory(src.toFile()).redirectErrorStream(true).redirectOutput(out.toFile()).start();
+                if (p.waitFor() != 0) System.out.println(indent(Files.readString(out, StandardCharsets.UTF_8)));
+                Files.deleteIfExists(out);
             }
         }
         List<Path> jars = jarsIn(dir);

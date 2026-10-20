@@ -90,7 +90,10 @@ html.print-pdf .reveal .code-actions button { display: none; }
 .reveal .tall .cell-output-display svg, .reveal .tall .mermaid svg, .reveal .tall pre.mermaid-js + div svg {
   max-height: 560px;
 }
-
+/* Graphviz knows the widths of a few fonts only and measures Jost as Times, about 10 % too narrow:
+   labels then run over their boxes. Diagrams use fontname="Arial" (Jost is at most as wide) and
+   are drawn in Jost here. */
+.reveal svg g.graph text[font-family="Arial"] { font-family: "Jost", sans-serif; }
 /* Layout checks (see se-slides.js) */
 .reveal .course-overflow { outline: 4px dashed #b3261e; outline-offset: -4px; }
 .reveal .course-overflow-label {
@@ -100,6 +103,9 @@ html.print-pdf .reveal .code-actions button { display: none; }
 
 /* Element in the top right corner of a slide (next to the title), e.g. a QR code: [..]{.corner} */
 .reveal .slides section .corner { position: absolute; right: 0; top: 0; }
+/* Voting is over once the answer shows: the QR code of a question makes room for it */
+.reveal .slides section .corner { transition: opacity 0.3s; }
+.reveal .slides section:has(.answer.visible) .corner { opacity: 0; pointer-events: none; }
 
 /* Link back to the list of lectures (se-slides.js) */
 .reveal .course-home, .reveal .course-video {
