@@ -68,6 +68,22 @@ else
   if [ -f index.qmd ]; then "$quarto" render index.qmd; fi
 fi
 
+# Narration of the generated lecture videos against the slides (README: "Generated lecture videos").
+# Errors (renamed slides, wrong [click] counts, slides without narration) fail --strict.
+decks=()
+for t in "${targets[@]:-lectures/[0-9]*.qmd}"; do
+  for f in $t; do
+    d="$(basename "$f" .qmd)"
+    compgen -G "lectures/$d.narration.*.md" >/dev/null && decks+=("$d")
+  done
+done
+if [ ${#decks[@]} -gt 0 ]; then
+  status=0
+  python3 "$(dirname "$0")/lecture-video/lv.py" check "${decks[@]}" --quiet || status=$?
+  if [ "$status" = 2 ] && [ -n "${COURSE_STRICT:-}" ]; then echo "Narration errors, see above"; exit 1; fi
+  [ "$status" -le 2 ] || exit "$status"
+fi
+
 if [ "$pdf" = 1 ]; then
   browser="${COURSE_BROWSER:-$(command -v google-chrome || command -v chromium || command -v chromium-browser)}"
   mkdir -p _site/pdf

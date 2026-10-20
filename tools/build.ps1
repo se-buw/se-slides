@@ -159,6 +159,21 @@ function Test-Layout([string[]]$targets) {
   return $total
 }
 
+# Narration of the generated lecture videos against the slides (README: "Generated lecture videos").
+# Needs only Python's standard library; returns the number of decks with errors.
+function Test-Narration([string[]]$targets) {
+  $decks = if ($targets.Count) { $targets | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) } } else { All-Decks }
+  $decks = @($decks | Where-Object { Get-ChildItem lectures -Filter "$_.narration.*.md" -ErrorAction SilentlyContinue })
+  if (-not $decks.Count) { return 0 }
+  $python = Get-Command python, python3, py -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $python) { Write-Warning 'Narration check skipped: no Python found'; return 0 }
+  $env:PYTHONUTF8 = '1'
+  & $python.Source "$PSScriptRoot/lecture-video/lv.py" check @decks --quiet | Out-Host
+  if ($LASTEXITCODE -eq 2) { return 1 }
+  if ($LASTEXITCODE) { throw "Narration check failed ($LASTEXITCODE)" }
+  return 0
+}
+
 $quarto = Find-Quarto
 $targets = @(Resolve-Lectures $Lecture)
 # The Moodle bundle is for students: only released lectures, as on the website
@@ -199,6 +214,8 @@ if ($renderTargets.Count -le 1) {
     if ($LASTEXITCODE) { exit $LASTEXITCODE }
   }
 }
+
+if ((Test-Narration $targets) -and $Strict) { throw 'Narration errors, see above (lecture-video.ps1 <lecture> check)' }
 
 if ($Pdf -or $Moodle) { Export-Pdf $targets }
 if ($Pdf -or $Moodle -or $Layout -or $Strict) {

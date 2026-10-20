@@ -8,6 +8,26 @@
     window.cancelAnimationFrame = function (id) { clearTimeout(id); };
   }
 
+  // Generated lecture videos (tools/lecture-video): deck.html?video shows the slides without
+  // navigation aids and cursor, and fragments appear without a transition (the video fades itself).
+  const VIDEO = /[?&]video(&|=|$)/.test(location.search);
+  if (VIDEO) {
+    document.documentElement.classList.add("course-video-mode");
+    const style = document.createElement("style");
+    style.textContent =
+      ".course-video-mode .reveal .controls, .course-video-mode .reveal .progress," +
+      ".course-video-mode .code-copy-button { display: none !important; }" +
+      // buttons, links and QR codes cannot be used in a video. The buttons go, so the file caption
+      // of a listing gets the whole line (no "…"); file names in the text (a.vscode-open.code-link)
+      // stay. QR codes leave their space (same layout as the slides).
+      ".course-video-mode button.vscode-open, .course-video-mode button.vscode-root," +
+      ".course-video-mode a.code-web { display: none !important; }" +
+      ".course-video-mode .qr-box { visibility: hidden !important; }" +
+      ".course-video-mode .reveal .slides section .fragment { transition: none !important; }" +
+      ".course-video-mode, .course-video-mode * { cursor: none !important; }";
+    document.head.appendChild(style);
+  }
+
   // Mermaid diagrams (Quarto renders them on load) size their label boxes with getBoundingClientRect,
   // which includes Reveal's scaling of the slides: at scale 0.94 (margin 0.06) every box came out 6 %
   // too small and labels ran over or were cut ("previous statemen"). Render them unscaled, then let
@@ -147,7 +167,7 @@
   // Decks live in lectures/ (website and Moodle bundle); the list is one level up.
   const HOME = "../index.html";
   whenReveal(function () {
-    if (document.documentElement.classList.contains("print-pdf") || /print-pdf/.test(location.search)) return;
+    if (document.documentElement.classList.contains("print-pdf") || /print-pdf/.test(location.search) || VIDEO) return;
     const link = document.createElement("a");
     link.className = "course-home";
     link.href = HOME;
@@ -222,7 +242,7 @@
 
   whenReveal(function () {
     const deck = window.Reveal;
-    if (printView() || window.self !== window.top || (deck.isSpeakerNotes && deck.isSpeakerNotes())) return;
+    if (printView() || VIDEO || window.self !== window.top || (deck.isSpeakerNotes && deck.isSpeakerNotes())) return;
     logSlide(deck.getCurrentSlide());
     deck.on("slidechanged", function (e) { logSlide(e.currentSlide); });
     // closing or reloading ends the visit of the current slide
@@ -258,7 +278,7 @@
   function videoLink() {
     const deck = window.Reveal;
     const data = document.getElementById("course-video");
-    if (!data || printView()) return;
+    if (!data || printView() || VIDEO) return;
     let videos = [];
     try { videos = JSON.parse(data.textContent).videos || []; } catch (e) { return; }
     if (!videos.length) return;

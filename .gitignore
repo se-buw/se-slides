@@ -1,3 +1,4 @@
 .quarto/
 _build/
 *.class
+__pycache__/
