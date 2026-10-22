@@ -305,7 +305,7 @@ def remember_wpm(lang: str, cfg: dict, tl: Timeline):
     p.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
 
 
-def build(decks: list[str], langs: list[str] | None, force: bool) -> int:
+def build(decks: list[str], langs: list[str] | None, force: bool, revoice: bool = False) -> int:
     cfg = course.load_config()
     for d in decks:
         for lang in langs or nmod.langs_of(d):
@@ -318,7 +318,7 @@ def build(decks: list[str], langs: list[str] | None, force: bool) -> int:
         manifest = framesmod.capture(d, force)
         for lang in langs or nmod.langs_of(d):
             n = nmod.parse(d, lang)
-            voice = Voice(lang, cfg["voices"][lang])
+            voice = Voice(lang, cfg["voices"][lang], revoice=revoice)
             tl = make_timeline(d, lang, n, manifest, voice, cfg)
             remember_wpm(lang, cfg, tl)
             if tl.end > cfg["max_minutes"] * 60:
@@ -341,7 +341,7 @@ SAMPLE = {
 }
 
 
-def sample(langs: list[str], text: str | None) -> int:
+def sample(langs: list[str], text: str | None, revoice: bool = False) -> int:
     """A code-heavy test paragraph with the configured voices: check a reference clip and settings in minutes."""
     cfg = course.load_config()
     folder = Path("_video") / "samples"
@@ -350,7 +350,7 @@ def sample(langs: list[str], text: str | None) -> int:
         if lang not in cfg["voices"]:
             raise SystemExit(f"No voice for {lang!r} in lecture-video.yml (voices.{lang})")
         vc = cfg["voices"][lang]
-        v = Voice(lang, vc)
+        v = Voice(lang, vc, revoice=revoice)
         audio = v.say(text or SAMPLE.get(lang, SAMPLE["en"]))
         f = folder / f"{lang}-{vc['engine']}.wav"
         sf.write(f, audio, v.sample_rate)

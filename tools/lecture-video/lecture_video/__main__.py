@@ -5,8 +5,8 @@
   fix-ids  [lectures] [--lang ..]                          follow renamed slides
   estimate [lectures] [--lang ..]                          runtime from the word count
   frames   [lectures] [--force]                            the pictures of all steps
-  build    [lectures] [--lang ..] [--force]                the videos: _video/<deck>.<lang>.mp4
-  sample   [--lang en,de] [--text ...]                    the configured voices on a test paragraph
+  build    [lectures] [--lang ..] [--force] [--revoice]    the videos: _video/<deck>.<lang>.mp4
+  sample   [--lang en,de] [--text ...] [--revoice]        the configured voices on a test paragraph
 """
 from __future__ import annotations
 
@@ -25,12 +25,14 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--stale", action="store_true", help="check: only changed slides, with their narration")
     ap.add_argument("--quiet", action="store_true", help="check: no INFO lines")
     ap.add_argument("--text", help="sample: the text to speak")
+    ap.add_argument("--revoice", action="store_true",
+                    help="build, sample: a new reference clip gives the spoken takes its timbre (rhythm and intonation stay)")
     a = ap.parse_args(argv)
     langs = a.lang.split(",") if a.lang else None
 
     if a.command == "sample":
         from . import build
-        return build.sample(langs or sorted(course.load_config()["voices"]), a.text)
+        return build.sample(langs or sorted(course.load_config()["voices"]), a.text, a.revoice)
     decks = course.resolve(a.lectures)
     if not decks:
         print("No lecture with narration (lectures/<deck>.narration.<lang>.md).")
@@ -50,7 +52,7 @@ def main(argv: list[str]) -> int:
             frames.capture(d, a.force)
         return 0
     from . import build
-    return build.build(decks, langs, a.force)
+    return build.build(decks, langs, a.force, a.revoice)
 
 
 if __name__ == "__main__":

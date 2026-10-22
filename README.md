@@ -392,7 +392,13 @@ review, `stamp` again.
 - `chatterbox` (default): local, both languages, expressive, clones your voice from
   `voice/ref-<lang>.wav`. `exaggeration` sets the energy, `cfg_weight` the pace (lower carries less
   accent), `seed` makes takes reproducible. About 1–2 h per lecture and language on a CPU; the model
-  is a 3 GB download on first use. Try settings on the
+  is a 3 GB download on first use. On a GPU it runs in fp16 (`dtype: fp32` for float32, the same for
+  both languages).
+- `qwen` (Qwen3-TTS 1.7B Base): local, clones `voice/ref-<lang>.wav` from its speaker embedding,
+  steadier than Chatterbox in German. qwen-tts pins another transformers version than Chatterbox, so
+  it runs in a worker with its own environment: `./bootstrap.ps1 -Qwen` once (after `-Gpu`). About 1.8×
+  real time on a Radeon 890M; code words are respelled with `lectures/pronunciation.yml`, as for Piper.
+  `seed`, `model` (`Qwen/Qwen3-TTS-12Hz-0.6B-Base` is no faster there). Try settings on the
   [Hugging Face Space](https://huggingface.co/spaces/ResembleAI/Chatterbox-Multilingual-TTS) first.
 - `piper`: local and fast, but flat; `speaker` for voices with several styles
   (`de_DE-thorsten_emotional-medium`). [Samples](https://rhasspy.github.io/piper-samples/).
@@ -417,6 +423,12 @@ engine says them as German words.
 `./lecture-video.ps1 sample` speaks a code-heavy test paragraph with the configured voices into
 `_video/samples/`: a check of the clips and settings in minutes. Spoken sentences are cached in
 `_video/cache`: after editing a narration, only the changed paragraphs are spoken again.
+
+A new reference clip (or new Chatterbox settings) means speaking everything again. For a new
+recording of the same voice, `-Revoice` (`./lecture-video.ps1 05 -Revoice`) keeps the spoken
+takes and only gives them the new clip's timbre, in about half the time: rhythm, intonation and
+accent stay those of the old clip. Changed settings (`exaggeration`, `cfg_weight`, `seed`,
+`temperature`) always speak everything again.
 
 The video uses `deck.html?video`: the slides without navigation, cursor, links, buttons and QR codes
 (their space stays). The credits slide is not part of the video.

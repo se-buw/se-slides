@@ -9,13 +9,16 @@
   ./bootstrap.ps1 -Video          # also the lecture videos: uv and ffmpeg (the voices come on first use)
   ./bootstrap.ps1 -Gpu gfx1150    # also Chatterbox on an AMD GPU (ROCm, about 5 GB): Radeon 890M = gfx1150
   ./bootstrap.ps1 -Gpu none       # back to the CPU; removes the GPU environment
+  ./bootstrap.ps1 -Qwen           # also the voice engine qwen (Qwen3-TTS), in its own environment, on the GPU
+                                  # of -Gpu (or the one set before)
 #>
 param(
   [switch]$Video,
-  [ValidatePattern('^(none|gfx\d{3,4}[a-z0-9]*)$')][string]$Gpu
+  [ValidatePattern('^(none|gfx\d{3,4}[a-z0-9]*)$')][string]$Gpu,
+  [switch]$Qwen
 )
 $ErrorActionPreference = 'Stop'
-if ($Gpu -and $Gpu -ne 'none') { $Video = $true }
+if (($Gpu -and $Gpu -ne 'none') -or $Qwen) { $Video = $true }
 $QuartoVersion = '1.10.18'   # update deliberately, then test a full build of each course
 $JdkFeature = 25             # latest Temurin 25.x (security updates within the LTS line)
 $ChromeChannel = 'Stable'    # chrome-headless-shell for PDF export (Chrome for Testing)
@@ -25,6 +28,8 @@ $FfmpegBranch = '8.1'        # lecture videos: latest build of this release bran
 $RocmIndex = 'https://stable.repo.amd.com/rocm/whl-next/'
 $RocmTorch = '2.12.0+rocm10.1.0'
 $RocmTorchaudio = '2.11.0+rocm10.1.0'
+# Qwen3-TTS: its own environment, it pins another transformers version than Chatterbox
+$QwenTts = '0.1.1'
 
 $Tools = if ($env:SE_SLIDES_HOME) { $env:SE_SLIDES_HOME } else { Join-Path $env:LOCALAPPDATA 'se-slides' }
 New-Item -ItemType Directory -Force $Tools | Out-Null
@@ -78,7 +83,8 @@ $gpuFile = Join-Path $videoHome 'gpu.txt'
 if ($Gpu -eq 'none') {
   Remove-Item -Force $gpuFile -ErrorAction SilentlyContinue
   Get-ChildItem $videoHome -Directory -Filter 'venv-gfx*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
-  Write-Host 'Lecture videos: Chatterbox runs on the CPU'
+  Get-ChildItem $videoHome -Directory -Filter 'venv-qwen-gfx*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
+  Write-Host 'Lecture videos: Chatterbox runs on the CPU (Qwen: ./bootstrap.ps1 -Qwen for its CPU environment)'
 } elseif ($Gpu) {
   $venv = Join-Path $videoHome "venv-$Gpu"
   $project = Join-Path $PSScriptRoot 'lecture-video'
@@ -99,6 +105,29 @@ if ($Gpu -eq 'none') {
   if ($LASTEXITCODE) { throw "PyTorch sees no GPU in $venv (wrong target or driver?). ./bootstrap.ps1 -Gpu none goes back to the CPU." }
   Set-Content $gpuFile $Gpu
   Write-Host "Lecture videos: Chatterbox runs on the GPU ($Gpu)"
+}
+
+# Qwen's environment: venv-qwen-<target> for the GPU in gpu.txt, venv-qwen for the CPU
+# (lecture-video.ps1 picks it the same way)
+if ($Qwen) {
+  $target = if (Test-Path $gpuFile) { (Get-Content $gpuFile -Raw).Trim() } else { '' }
+  $venv = Join-Path $videoHome $(if ($target) { "venv-qwen-$target" } else { 'venv-qwen' })
+  New-Item -ItemType Directory -Force $videoHome | Out-Null
+  if (-not (Test-Path (Join-Path $venv 'Scripts/python.exe'))) { & $uv venv --quiet --python 3.12 $venv }
+  $env:VIRTUAL_ENV = $venv
+  if ($target) {
+    $override = Join-Path $tmp 'rocm-override.txt'
+    Set-Content $override "torch[device-$target]==$RocmTorch`ntorchaudio==$RocmTorchaudio"
+    & $uv pip install --index $RocmIndex --index-strategy unsafe-best-match --override $override `
+      "qwen-tts==$QwenTts" "torch[device-$target]==$RocmTorch" "torchaudio==$RocmTorchaudio"
+  } else {
+    & $uv pip install "qwen-tts==$QwenTts"
+  }
+  $code = $LASTEXITCODE
+  Remove-Item Env:VIRTUAL_ENV
+  if ($code) { throw "Installing the Qwen environment failed" }
+  & (Join-Path $venv 'Scripts/python.exe') -c "import torch; print('Qwen:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
+  if ($LASTEXITCODE) { throw "The Qwen environment in $venv does not start" }
 }
 Write-Host "Tools in $Tools"
 & $quarto --version

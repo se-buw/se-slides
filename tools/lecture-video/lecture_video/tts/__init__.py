@@ -2,7 +2,7 @@
 
     voices:
       en: { engine: chatterbox, ref: voice/ref-en.wav, exaggeration: 0.6 }
-      de: { engine: piper, voice: de_DE-thorsten-high }
+      de: { engine: qwen, seed: 7 }       # or { engine: piper, voice: de_DE-thorsten-high }
 
 An engine turns text in one language into mono float32 samples at its sample_rate. Voice adds what
 all engines share: sentences, code spans (speakcode.py), the lexicon and a cache per piece in
@@ -12,24 +12,43 @@ Code spans are English. Chatterbox says them in English inside a German sentence
 one piece, the code is tagged with Chatterbox's language tokens ([en]count[de]). For the other
 engines (and with `code: respell`) code words are respelled with the lexicon of the narration's
 language (lectures/pronunciation.yml), e.g. for Piper.
+
+The cache keeps each take as the engine made it, with where its text ended (<hash>.json): the cut
+(cut_tail, trim) is made on every read, so changing it needs no new synthesis. Chatterbox's speech
+tokens are kept under a key without the reference clip (tokens/): with revoice, a new clip gives the
+takes its timbre without speaking them again (rhythm and intonation stay those of the old clip).
+A new VOCODER revision (e.g. S3Gen settings) makes the audio again from the tokens, without T3.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
 
 from .. import speakcode
+from .ref import ref_path
 
-ENGINES = ("chatterbox", "piper", "openai", "elevenlabs", "azure")
+ENGINES = ("chatterbox", "qwen", "piper", "openai", "elevenlabs", "azure")
+CLONING = {"chatterbox", "qwen"}  # clone voice/ref-<lang>.wav: a new recording speaks everything again
+BREATH = {"qwen"}  # takes start with a breath before the speech: cut_head
 INLINE = {"chatterbox"}  # language switches inside one text: [en]word[de]
-REVISION = {"chatterbox": 2}  # 2: sentences no longer cut off by the repetition check
+REVISION = {"chatterbox": 3}  # 2: sentences no longer cut off by the repetition check; 3: uncut takes, end of text, tokens
+# the step from tokens to sound: a new revision makes the audio again from the cached tokens, without T3
+VOCODER = {"chatterbox": 3}  # 2: S3Gen with 6 flow steps instead of 10; 3: its prompt ends at a pause
 SENTENCE_PAUSE = 0.22    # s between sentences
 MIN_SENTENCE = 30        # characters: shorter sentences are spoken together with the one before
+
+
+@dataclass
+class Take:
+    audio: np.ndarray
+    end: float | None = None            # s: where the text was spoken; after it the engine may babble
+    tokens: np.ndarray | None = None    # Chatterbox's speech tokens, for revoice
 
 
 class Engine:
@@ -39,7 +58,7 @@ class Engine:
         self.lang = lang
         self.cfg = cfg
 
-    def synth(self, text: str, lang: str) -> np.ndarray:
+    def synth(self, text: str, lang: str) -> np.ndarray | Take:
         raise NotImplementedError
 
 
@@ -49,6 +68,8 @@ def create(lang: str, cfg: dict) -> Engine:
         from .piper import Piper as E
     elif name == "chatterbox":
         from .chatterbox import Chatterbox as E
+    elif name == "qwen":
+        from .qwen import Qwen as E
     elif name == "openai":
         from .cloud import OpenAI as E
     elif name == "elevenlabs":
@@ -110,19 +131,26 @@ class Lexicon:
 class Voice:
     """Engine + code spans + lexicon + cache for one language."""
 
-    def __init__(self, lang: str, cfg: dict, cache: Path = Path("_video/cache/tts")):
-        self.lang, self.cfg = lang, cfg
+    def __init__(self, lang: str, cfg: dict, cache: Path = Path("_video/cache/tts"), revoice: bool = False):
+        self.lang, self.cfg, self.revoice = lang, cfg, revoice
         self.lexicons: dict[str, Lexicon] = {}
         self.cache = cache / lang
         self.cache.mkdir(parents=True, exist_ok=True)
         self._engine: Engine | None = None
         self.key = json.dumps(cfg, sort_keys=True)
+        # tokens outlive a new recording of the reference voice, under the same name or another (revoice)
+        self.token_key = json.dumps({k: v for k, v in cfg.items() if k != "ref"}, sort_keys=True)
         if cfg.get("engine") in REVISION:  # takes made by an older engine setup are spoken again
             self.key += f"\nrev {REVISION[cfg['engine']]}"
+            self.token_key += f"\nrev {REVISION[cfg['engine']]}"
+        if cfg.get("engine") in VOCODER and VOCODER[cfg["engine"]] > 1:
+            self.key += f"\nvocoder {VOCODER[cfg['engine']]}"
         # a new recording of the reference voice must not reuse sentences spoken with the old one
-        ref = Path(cfg["ref"]) if cfg.get("ref") else Path("voice") / f"ref-{lang}.wav"
-        if cfg.get("engine") == "chatterbox" and ref.exists():
-            self.key += "\n" + hashlib.sha256(ref.read_bytes()).hexdigest()
+        ref = ref_path(lang, cfg)
+        self.ref = ""
+        if cfg.get("engine") in CLONING and ref.exists():
+            self.ref = hashlib.sha256(ref.read_bytes()).hexdigest()
+            self.key += "\n" + self.ref
         self.inline = cfg.get("engine") in INLINE and cfg.get("code", "inline") == "inline"
         # code words that sound wrong even in English, said as words of this language (de-code: Integer)
         self.native = pronunciation(f"{lang}-code")
@@ -169,13 +197,86 @@ class Voice:
 
     def piece(self, text: str, lang: str) -> np.ndarray:
         h = hashlib.sha256(f"{self.key}\n{lang}\n{text}".encode()).hexdigest()[:24]
-        f = self.cache / f"{h}.wav"
+        f, meta = self.cache / f"{h}.wav", self.cache / f"{h}.json"
         if f.exists():
-            return sf.read(f, dtype="float32")[0]
-        audio = np.asarray(self.engine.synth(text, lang), dtype=np.float32).reshape(-1)
-        audio = trim(audio, self.sample_rate)
+            end = json.loads(meta.read_text(encoding="utf-8"))["end"] if meta.exists() else None
+            return self.finish(sf.read(f, dtype="float32")[0], end)
+        t = hashlib.sha256(f"{self.token_key}\n{lang}\n{text}".encode()).hexdigest()[:24]
+        tokens = self.cache / "tokens" / f"{t}.npz"
+        z = np.load(tokens) if tokens.exists() else None
+        # tokens of the same reference clip (only the vocoder changed), or of another one with revoice;
+        # a take without an end (its alignment lost the text) is spoken again, with the retries of synth
+        if (z is not None and z["end"] >= 0 and (self.revoice or str(z["ref"]) == self.ref)
+                and hasattr(self.engine, "revoice")):
+            take = Take(self.engine.revoice(z["tokens"]), float(z["end"]), z["tokens"])
+        else:
+            take = self.engine.synth(text, lang)
+            take = take if isinstance(take, Take) else Take(take)
+        audio = np.asarray(take.audio, dtype=np.float32).reshape(-1)
         sf.write(f, audio, self.sample_rate, subtype="FLOAT")
+        if take.end is not None:
+            meta.write_text(json.dumps({"end": take.end}), encoding="utf-8")
+        if take.tokens is not None:
+            tokens.parent.mkdir(exist_ok=True)
+            np.savez(tokens, tokens=np.asarray(take.tokens, np.int16), ref=self.ref,
+                     end=take.end if take.end is not None else -1.0)
+        return self.finish(audio, take.end)
+
+    def finish(self, audio: np.ndarray, end: float | None) -> np.ndarray:
+        if self.cfg.get("engine") in BREATH:
+            audio = cut_head(audio, self.sample_rate)
+        return trim(cut_tail(audio, self.sample_rate, end), self.sample_rate)
+
+
+def fade(audio: np.ndarray, sr: int, start: float = 0.0, stop: float = 0.0) -> np.ndarray:
+    """Raised-cosine fade-in over `start` s and fade-out over `stop` s: no click where a take is cut."""
+    audio = audio.copy()
+    for seconds, out in ((start, False), (stop, True)):
+        n = min(int(seconds * sr), len(audio))
+        if n:
+            ramp = ((1 - np.cos(np.linspace(0, np.pi, n))) / 2).astype(np.float32)
+            if out:
+                audio[-n:] *= ramp[::-1]
+            else:
+                audio[:n] *= ramp
+    return audio
+
+
+def cut_tail(audio: np.ndarray, sr: int, end: float | None, quiet_db: float = -40, pause: float = 0.12,
+             keep: float = 0.06, babble: float = 0.4) -> np.ndarray:
+    """Chatterbox goes on after the text (a breath, the start of a new word) until it is stopped.
+    Cut at the first pause after `end`, where the text was spoken; without a pause, `babble` s after it."""
+    if end is None:
         return audio
+    start, n = int(end * sr), int(0.01 * sr)
+    tail = audio[start:]
+    frames = len(tail) // n
+    rms = np.sqrt(np.mean(tail[:frames * n].reshape(frames, n) ** 2, axis=1)) if frames else np.zeros(0)
+    quiet, need, run, cut = rms < 10 ** (quiet_db / 20), round(pause / 0.01), 0, None
+    for i, q in enumerate(quiet):
+        run = run + 1 if q else 0
+        if run == need:
+            cut = start + (i + 1 - need) * n + int(keep * sr)
+            break
+    if cut is None:
+        if len(tail) <= int((babble + 0.1) * sr):
+            return audio
+        cut = start + int(babble * sr)
+    return fade(audio[:cut], sr, stop=0.02)
+
+
+def cut_head(audio: np.ndarray, sr: int, quiet_db: float = -50, loud_db: float = -30, within: float = 0.8) -> np.ndarray:
+    """Qwen starts every take with about 300 ms of breath (-43 dB, peaks above trim's threshold), a
+    short silence, then the speech: cut at the last frame below `quiet_db` before the first one above
+    `loud_db`, if that is within `within` s. A take that starts speaking at once is not touched."""
+    n = int(0.01 * sr)
+    frames = min(len(audio), int(within * sr)) // n
+    rms = 20 * np.log10(np.sqrt(np.mean(audio[:frames * n].reshape(frames, n) ** 2, axis=1)) + 1e-9)
+    loud = np.flatnonzero(rms > loud_db)
+    if not len(loud):
+        return audio
+    quiet = np.flatnonzero(rms[:loud[0]] < quiet_db)
+    return audio[quiet[-1] * n:] if len(quiet) else audio
 
 
 def trim(audio: np.ndarray, sr: int, threshold: float = 0.01, keep: float = 0.04) -> np.ndarray:
@@ -184,4 +285,4 @@ def trim(audio: np.ndarray, sr: int, threshold: float = 0.01, keep: float = 0.04
     if not len(loud):
         return audio
     k = int(keep * sr)
-    return audio[max(0, loud[0] - k):min(len(audio), loud[-1] + k)]
+    return fade(audio[max(0, loud[0] - k):min(len(audio), loud[-1] + k)], sr, 0.01, 0.01)

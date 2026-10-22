@@ -13,6 +13,8 @@
   ./lecture-video.ps1 05 estimate         # runtime from the word count, before any audio exists
   ./lecture-video.ps1 sample -Lang de     # the configured voice on a code-heavy test paragraph: _video/samples/
   ./lecture-video.ps1 05 -Force           # take the pictures again and ignore check errors (drafts)
+  ./lecture-video.ps1 05 -Revoice         # new voice/ref-*.wav: its timbre on the spoken takes, about half the time
+                                          # (rhythm and intonation stay those of the old clip)
 #>
 param(
   [Parameter(Position = 0, ValueFromRemainingArguments = $true)][string[]]$Arguments = @(),
@@ -21,6 +23,7 @@ param(
   [switch]$Stale,
   [switch]$Quiet,
   [switch]$Force,
+  [switch]$Revoice,
   [switch]$NoRender
 )
 $ErrorActionPreference = 'Stop'
@@ -46,6 +49,13 @@ if (Test-Path 'lecture-video.yml') {
   $used = @([regex]::Matches((Get-Content 'lecture-video.yml' -Raw), '(?m)^[^#\n]*engine:\s*(\w+)') | ForEach-Object { $_.Groups[1].Value })
 }
 $extras = @($local | Where-Object { $used -contains $_ } | ForEach-Object { '--extra', $_ })
+# Qwen runs in a worker with its own environment (bootstrap.ps1 -Qwen), for the GPU in gpu.txt
+if ($used -contains 'qwen') {
+  $gpuTxt = Join-Path $ToolCache 'lecture-video/gpu.txt'
+  $qwenEnv = if (Test-Path $gpuTxt) { "venv-qwen-$((Get-Content $gpuTxt -Raw).Trim())" } else { 'venv-qwen' }
+  $env:LV_QWEN_PYTHON = Join-Path $ToolCache "lecture-video/$qwenEnv/Scripts/python.exe"
+  if (-not (Test-Path $env:LV_QWEN_PYTHON)) { throw "The voice engine qwen needs its environment: run $PSScriptRoot/bootstrap.ps1 -Qwen once." }
+}
 
 # Pictures and the check need the deck's current HTML
 if (-not $NoRender -and @('build', 'frames') -contains $command -and $lectures.Count) {
@@ -59,6 +69,7 @@ if ($Text) { $pyArgs += '--text', $Text }
 if ($Stale) { $pyArgs += '--stale' }
 if ($Quiet) { $pyArgs += '--quiet' }
 if ($Force) { $pyArgs += '--force' }
+if ($Revoice) { $pyArgs += '--revoice' }
 # bootstrap.ps1 -Gpu <target>: its ROCm environment (made there, not synced here)
 $gpuFile = Join-Path $ToolCache 'lecture-video/gpu.txt'
 if (Test-Path $gpuFile) {
