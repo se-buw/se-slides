@@ -35,7 +35,7 @@
 }
 .reveal .code-actions .code-badge {
   background: var(--course-accent, #1d4e89);
-  color: #fff;
+  color: var(--r-background-color, #fff);
   border-radius: 3px;
   padding: 0.1em 0.5em;
 }
@@ -57,8 +57,8 @@
 
 /* Drafting aid */
 .reveal .todo {
-  border: 3px dashed #b3261e;
-  color: #b3261e;
+  border: 3px dashed var(--course-marker, #b3261e);
+  color: var(--course-marker, #b3261e);
   padding: 0.3em 0.6em;
   font-size: 0.6em;
 }
@@ -79,17 +79,21 @@ html.print-pdf .reveal .code-actions button { display: none; }
   font-family: var(--r-code-font, "JetBrains Mono", monospace);
 }
 
-/* Mermaid diagrams: use the available width of their column */
+/* Diagrams (Mermaid, Graphviz): se-slides.js sets --diagram-w, the width at which their text is
+   24 px, and --diagram-ratio. They shrink to fit their column and the height limit, which the
+   script raises to the room left on the slide; text below 20 px is reported by the layout check.
+   Until the script ran: the width of the column, up to 420 px high. */
 .reveal .cell-output-display svg, .reveal .mermaid svg, .reveal pre.mermaid-js + div svg {
   max-width: 100% !important;
-  width: 100%;
+  width: min(100%, var(--diagram-w, 100%), calc(var(--diagram-max-h) * var(--diagram-ratio, 100)));
   height: auto;
-  max-height: 420px; /* width 100% + aspect ratio: small diagrams are not blown up beyond this */
+  max-height: var(--diagram-max-h);
+  display: block;
+  margin-inline: auto; /* centred in their column, as when they filled it */
 }
-/* ::: tall around a diagram: up to 560 px, e.g. a class diagram on a slide of its own */
-.reveal .tall .cell-output-display svg, .reveal .tall .mermaid svg, .reveal .tall pre.mermaid-js + div svg {
-  max-height: 560px;
-}
+.reveal { --diagram-max-h: 420px; }
+/* ::: tall around a diagram: up to 560 px before the script ran (it uses the room on the slide) */
+.reveal .tall { --diagram-max-h: 560px; }
 /* Graphviz knows the widths of a few fonts only and measures Jost as Times, about 10 % too narrow:
    labels then run over their boxes. Diagrams use fontname="Arial" (Jost is at most as wide) and
    are drawn in Jost here. */
@@ -107,13 +111,17 @@ html.print-pdf .reveal .code-actions button { display: none; }
 .reveal .slides section .corner { transition: opacity 0.3s; }
 .reveal .slides section:has(.answer.visible) .corner { opacity: 0; pointer-events: none; }
 
-/* Link back to the list of lectures (se-slides.js) */
-.reveal .course-home, .reveal .course-video {
+/* Links in the bottom left corner (se-slides.js): list of lectures, recording, dark/light theme */
+.reveal .course-links {
   position: absolute; left: 12px; bottom: 8px; z-index: 30;
-  font: 14px/1.2 "Jost", sans-serif; color: var(--course-muted, #555); text-decoration: none;
+  display: flex; gap: 1.2em;
+  font: 14px/1.2 "Jost", sans-serif;
 }
-.reveal .course-video { left: 130px; }
-.reveal .course-home:hover, .reveal .course-video:hover { color: var(--course-accent, #1d4e89); text-decoration: underline; }
+.reveal .course-links a { color: var(--course-muted, #555); text-decoration: none; }
+.reveal .course-links a[hidden] { display: none; }
+.reveal .course-video { order: 1; }
+.reveal .course-theme { order: 2; }
+.reveal .course-links a:hover { color: var(--course-accent, #1d4e89); text-decoration: underline; }
 
 /* Group logo on the title slide (brand/logo_se.png) */
 .reveal .slides section#title-slide::after {

@@ -28,12 +28,45 @@
     document.head.appendChild(style);
   }
 
+  // Dark mode (theme/se.scss). Without a choice the slides follow the system theme, in CSS alone.
+  // A choice (key D, link in the corner) is stored like the one of Quarto's toggle on the list of
+  // lectures, so both share it: "alternate" is dark, "default" light. PDF export and videos stay light.
+  // This script runs in <head>, so the stored theme applies before the first paint.
+  const SCHEME = "quarto-color-scheme";
+  const ALWAYS_LIGHT = VIDEO || /print-pdf/.test(location.search);
+  const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
+  function applyScheme() {
+    let stored = null;
+    try { stored = localStorage.getItem(SCHEME); } catch (e) { /* private mode */ }
+    const html = document.documentElement;
+    if (ALWAYS_LIGHT || stored === "default") html.dataset.theme = "light";
+    else if (stored === "alternate") html.dataset.theme = "dark";
+    else delete html.dataset.theme;
+  }
+  function isDark() {
+    const theme = document.documentElement.dataset.theme;
+    return theme ? theme === "dark" : systemDark.matches;
+  }
+  // The same theme as the system's is no choice: the slides follow the system again
+  function setDark(dark) {
+    try {
+      if (dark === systemDark.matches) localStorage.removeItem(SCHEME);
+      else localStorage.setItem(SCHEME, dark ? "alternate" : "default");
+      applyScheme();
+    } catch (e) {
+      document.documentElement.dataset.theme = dark ? "dark" : "light"; // private mode: this page only
+    }
+  }
+  applyScheme();
+  // a choice made in another tab, e.g. on the list of lectures
+  window.addEventListener("storage", function (e) { if (e.key === SCHEME) applyScheme(); });
+
   // Mermaid diagrams (Quarto renders them on load) size their label boxes with getBoundingClientRect,
   // which includes Reveal's scaling of the slides: at scale 0.94 (margin 0.06) every box came out 6 %
   // too small and labels ran over or were cut ("previous statemen"). Render them unscaled, then let
   // Reveal scale again. This listener is registered before Quarto's (script order), so it runs first.
   window.addEventListener("load", function () {
-    if (!document.querySelector("pre.mermaid-js")) return;
+    if (!document.querySelector("pre.mermaid-js")) return sizeDiagrams();
     const unscaled = document.createElement("style");
     unscaled.textContent = ".reveal .slides { transform: none !important; zoom: 1 !important; }";
     document.head.appendChild(unscaled);
@@ -42,8 +75,52 @@
       // Quarto replaces each pre.mermaid-js by its SVG; give up after 10 s (a broken diagram)
       if (document.querySelector("pre.mermaid-js") && ++tries < 200) return setTimeout(rescale, 50);
       unscaled.remove();
+      sizeDiagrams();
       if (window.Reveal && window.Reveal.layout) window.Reveal.layout();
     })();
+  });
+
+  // Diagrams (Mermaid, Graphviz) get the same text size everywhere, instead of the width of their
+  // column: a small diagram was blown up to 74 px text, a wide one shrunk to 11 px. Both draw text
+  // in the units of their viewBox; --diagram-w (se-slides.css) is the width at which the most used
+  // text size becomes DIAGRAM_TEXT px. Narrower columns and the height limit shrink it further.
+  const DIAGRAMS = ".reveal .cell-output-display svg, .reveal .mermaid svg, .reveal pre.mermaid-js + div svg";
+  const DIAGRAM_TEXT = 24;      // px on the 1280x720 slide; body text is 34, code 20
+  const DIAGRAM_TEXT_MIN = 20;  // smaller text is reported by the layout check (as for code)
+
+  // The text size used for most characters, in viewBox units
+  function diagramFont(svg) {
+    const chars = {};
+    svg.querySelectorAll("text, foreignObject span, foreignObject div, foreignObject p").forEach(function (el) {
+      const text = el.textContent.trim();
+      if (!text || (el.tagName.toLowerCase() !== "text" && el.children.length)) return;
+      const size = Math.round(parseFloat(getComputedStyle(el).fontSize) * 10) / 10;
+      if (size > 0) chars[size] = (chars[size] || 0) + text.length;
+    });
+    let best = 0;
+    Object.keys(chars).forEach(function (s) { if (!best || chars[s] > chars[best]) best = s; });
+    return +best;
+  }
+
+  function sizeDiagrams() {
+    document.querySelectorAll(DIAGRAMS).forEach(function (svg) {
+      const box = svg.viewBox && svg.viewBox.baseVal;
+      const font = box && box.width && box.height && diagramFont(svg);
+      if (!font) return;
+      svg.dataset.courseFont = font;
+      svg.style.setProperty("--diagram-w", (box.width * DIAGRAM_TEXT / font).toFixed(1) + "px");
+      svg.style.setProperty("--diagram-ratio", (box.width / box.height).toFixed(4));
+    });
+    // the room on a slide needs its layout: all slides in the print view, else the slide shown
+    whenReveal(function () {
+      if (!printView()) return fitDiagrams(window.Reveal.getCurrentSlide());
+      document.querySelectorAll(".reveal .slides section").forEach(function (s) {
+        if (!s.querySelector("section")) fitDiagrams(s);
+      });
+    });
+  }
+  whenReveal(function () {
+    window.Reveal.on("slidechanged", function (e) { fitDiagrams(e.currentSlide); });
   });
 
   const KEY = "course.vscodeRoot";
@@ -125,6 +202,48 @@
     }
   }
 
+  function slideScale() {
+    return window.Reveal.getScale ? window.Reveal.getScale() : 1;
+  }
+
+  // Lowest point of a slide's content, in px of the 720 px slide
+  function contentBottom(section) {
+    const scale = slideScale();
+    const top = section.getBoundingClientRect().top;
+    let bottom = 0;
+    section.querySelectorAll("h1, h2, p, li, pre, table, img, svg, .listing, .columns, .callout, .tip, .pitfall, .java25")
+      .forEach(function (el) {
+        if (el.closest(".notes, aside")) return;
+        const r = el.getBoundingClientRect();
+        if (r.height > 0) bottom = Math.max(bottom, (r.bottom - top) / scale);
+      });
+    return bottom;
+  }
+
+  // Height limit of the diagrams of a shown slide (sizeDiagrams): their size at DIAGRAM_TEXT, as far
+  // as the room above the footer allows. Diagrams one below the other share the shortage.
+  function fitDiagrams(section) {
+    if (!section) return;
+    const svgs = Array.from(section.querySelectorAll(DIAGRAMS)).filter(function (svg) { return svg.dataset.courseFont; });
+    if (!svgs.length) return;
+    svgs.forEach(function (svg) {
+      const box = svg.viewBox.baseVal;
+      svg.style.setProperty("--diagram-max-h", (box.height * DIAGRAM_TEXT / +svg.dataset.courseFont).toFixed(1) + "px");
+    });
+    // 2 px below the limit: sizes round to fractions of a pixel
+    const over = contentBottom(section) - (window.Reveal.getConfig().height - FOOTER_SPACE - 2);
+    if (over <= 0) return;
+    const scale = slideScale();
+    const rects = svgs.map(function (svg) { return svg.getBoundingClientRect(); });
+    const stacked = rects.some(function (a) {
+      return rects.some(function (b) { return a !== b && (a.bottom <= b.top || b.bottom <= a.top); });
+    });
+    const share = stacked ? over / svgs.length : over;
+    svgs.forEach(function (svg, i) {
+      svg.style.setProperty("--diagram-max-h", Math.max(rects[i].height / scale - share, 40).toFixed(1) + "px");
+    });
+  }
+
   // Returns the problems of one slide as texts; draws them if draw is true.
   function checkSlide(section, draw) {
     const problems = [];
@@ -135,21 +254,23 @@
     }
     const deck = window.Reveal;
     const height = deck.getConfig().height;
-    const scale = deck.getScale ? deck.getScale() : 1;
-    const top = section.getBoundingClientRect().top;
-    let bottom = 0;
-    section.querySelectorAll("h1, h2, p, li, pre, table, img, svg, .listing, .columns, .callout, .tip, .pitfall, .java25")
-      .forEach(function (el) {
-        if (el.closest(".notes, aside")) return;
-        const r = el.getBoundingClientRect();
-        if (r.height > 0) bottom = Math.max(bottom, (r.bottom - top) / scale);
-      });
+    const scale = slideScale();
+    const bottom = contentBottom(section);
     if (bottom > height - FOOTER_SPACE) found(section, "content too long (" + Math.round(bottom) + " px)");
     // Quarto scrolls div.sourceCode, plain blocks scroll the pre: check every level
     section.querySelectorAll("div.sourceCode, pre, pre > code").forEach(function (el) {
       const box = el.closest("div.sourceCode") || el;
       if (el.scrollWidth > el.clientWidth + 2) found(box, "code line too wide");
       if (el.scrollHeight > el.clientHeight + 2) found(box, "listing clipped");
+    });
+    // a diagram that had to shrink below the minimum text size (sizeDiagrams)
+    section.querySelectorAll(DIAGRAMS).forEach(function (svg) {
+      const font = +svg.dataset.courseFont;
+      const box = svg.viewBox && svg.viewBox.baseVal;
+      const r = svg.getBoundingClientRect();
+      if (!font || !box || !box.width || !r.width) return;
+      const px = font * Math.min(r.width / box.width, r.height / box.height) / scale;
+      if (px < DIAGRAM_TEXT_MIN - 0.5) found(svg, "diagram text " + Math.round(px) + " px");
     });
     if (draw && problems.length) {
       console.warn("[course] " + problems.join(", ") + ": " + (section.querySelector("h2, h1") || {}).textContent);
@@ -163,8 +284,20 @@
     else setTimeout(function () { whenReveal(fn); }, 100);
   }
 
+  // Links in the bottom left corner, in one row (se-slides.css)
+  function cornerLinks() {
+    let row = document.querySelector(".reveal .course-links");
+    if (!row) {
+      row = document.createElement("div");
+      row.className = "course-links";
+      document.querySelector(".reveal").appendChild(row);
+    }
+    return row;
+  }
+
   // Way back to the list of all lectures: link in the bottom left corner and key H.
   // Decks live in lectures/ (website and Moodle bundle); the list is one level up.
+  // Next to it the switch between dark and light theme, key D.
   const HOME = "../index.html";
   whenReveal(function () {
     if (document.documentElement.classList.contains("print-pdf") || /print-pdf/.test(location.search) || VIDEO) return;
@@ -173,9 +306,22 @@
     link.href = HOME;
     link.title = "All lectures (H)";
     link.textContent = "☰ All lectures";
-    document.querySelector(".reveal").appendChild(link);
+    cornerLinks().appendChild(link);
     window.Reveal.addKeyBinding({ keyCode: 72, key: "H", description: "All lectures" },
       function () { window.location.href = HOME; });
+
+    const theme = document.createElement("a");
+    theme.className = "course-theme";
+    theme.href = "#";
+    theme.title = "Dark or light theme (D)";
+    function label() { theme.textContent = isDark() ? "◐ Light" : "◐ Dark"; }
+    function toggle() { setDark(!isDark()); label(); }
+    theme.addEventListener("click", function (e) { e.preventDefault(); toggle(); });
+    cornerLinks().appendChild(theme);
+    label();
+    systemDark.addEventListener("change", label);
+    window.addEventListener("storage", label);
+    window.Reveal.addKeyBinding({ keyCode: 68, key: "D", description: "Dark or light theme" }, toggle);
   });
 
   // deck.html?slide=12 (slide box on the list of lectures): open the deck at slide 12 as numbered
@@ -308,7 +454,7 @@
     // no "noreferrer": YouTube Studio then counts these views as External from the course site (the
     // origin only, not the deck); the lecture table keeps noreferrer so slide clicks stand apart
     link.rel = "noopener";
-    document.querySelector(".reveal").appendChild(link);
+    cornerLinks().appendChild(link);
     function update() {
       const href = target(deck.getCurrentSlide());
       link.hidden = !href;

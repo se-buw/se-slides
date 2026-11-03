@@ -232,6 +232,56 @@ local function embed_videos()
   quarto.doc.include_text("after-body", '<script type="application/json" id="course-video">' .. json .. "</script>")
 end
 
+-- Dark mode (theme/se.scss, se-slides.js): Quarto gives a reveal.js deck the highlighting of one
+-- theme only. The token colours for dark mode come from the a11y-dark theme that ships with Quarto,
+-- scoped to the selectors of dark mode.
+local TOKEN_CLASSES = {
+  Alert = "al", Annotation = "an", Attribute = "at", BaseN = "bn", BuiltIn = "bu", Char = "ch",
+  CommentVar = "cv", Comment = "co", Constant = "cn", ControlFlow = "cf", DataType = "dt",
+  DecVal = "dv", Documentation = "do", Error = "er", Extension = "ex", Float = "fl", Function = "fu",
+  Import = "im", Information = "in", Keyword = "kw", Operator = "op", Other = "ot",
+  Preprocessor = "pp", RegionMarker = "re", SpecialChar = "sc", SpecialString = "ss", String = "st",
+  Variable = "va", VerbatimString = "vs", Warning = "wa",
+}
+local DARK_SCOPES = { ':root[data-theme="dark"]', ':root:not([data-theme="light"])' }
+
+local function dark_highlighting()
+  local share = os.getenv("QUARTO_SHARE_PATH")
+  local f = share and io.open(pandoc.path.join({ share, "pandoc", "highlight-styles", "a11y-dark.theme" }), "rb")
+  if not f then
+    quarto.log.warning("[course] a11y-dark.theme not found: listings keep their light colours in dark mode")
+    return
+  end
+  local ok, theme = pcall(pandoc.json.decode, f:read("a"), false)
+  f:close()
+  if not ok or type(theme) ~= "table" or type(theme["text-styles"]) ~= "table" then return end
+  local styles = theme["text-styles"]
+  local rules = {} -- { selector below the scope, declarations }
+  local normal = styles.Normal and styles.Normal["text-color"] or theme["text-color"]
+  if normal then
+    for _, sel in ipairs({ "code span", "code.sourceCode > span", "div.sourceCode pre.sourceCode" }) do
+      table.insert(rules, { sel, "color: " .. normal })
+    end
+  end
+  local vars = {}
+  for name, cls in pairs(TOKEN_CLASSES) do
+    local color = type(styles[name]) == "table" and styles[name]["text-color"]
+    if type(color) == "string" then
+      table.insert(vars, "--quarto-hl-" .. cls .. "-color: " .. color) -- inline code uses these
+      table.insert(rules, { "code span." .. cls, "color: " .. color })
+    end
+  end
+  table.sort(vars)
+  table.sort(rules, function(a, b) return a[1] < b[1] end)
+  local function scoped(scope)
+    local out = { scope .. " { " .. table.concat(vars, "; ") .. " }" }
+    for _, r in ipairs(rules) do table.insert(out, scope .. " " .. r[1] .. " { " .. r[2] .. " }") end
+    return table.concat(out, "\n")
+  end
+  quarto.doc.include_text("in-header", "<style>\n" .. scoped(DARK_SCOPES[1]) ..
+    "\n@media (prefers-color-scheme: dark) {\n" .. scoped(DARK_SCOPES[2]) .. "\n}\n</style>")
+end
+
 -- Index page (format se-slides-html): `::: {#lectures}` becomes a table of all lectures (number,
 -- title, slide box, subtitle, PDF, videos), read from the front matter of lectures/[0-9]*.qmd.
 local function lecture_entries()
@@ -342,6 +392,7 @@ return {
             '<meta name="course-vscode-root" content="' .. lib.html_escape(vroot:gsub("\\", "/")) .. '">')
         end
         embed_videos()
+        dark_highlighting()
       end
       if todo_count > 0 then
         quarto.log.warning("[course] " .. todo_count .. " todo block(s) in " .. quarto.doc.input_file)

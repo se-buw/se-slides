@@ -251,6 +251,15 @@ overview, `S` the speaker view. "Open in VS Code" (and `{{< file >}}` links) use
 builds use the course checkout's folder, students set the folder of their clone once with the ⚙ button
 next to a listing (stored in their browser). VS Code should have `course.code-workspace` open.
 
+Dark mode: slides and the list of lectures follow the system theme. `D` or "◐ Dark"/"◐ Light" in a
+deck, or the switch in the top right corner of the list, chooses the other theme; the choice is
+stored in the browser (`localStorage["quarto-color-scheme"]`, Quarto's own key) and holds for the
+list and all decks. Choosing the system's theme again makes them follow the system. The list uses
+Quarto's dark mode (`theme: light/dark` in `_extension.yml`); reveal.js decks get one theme from
+Quarto, so `theme/se.scss` adds the dark variant and `se-slides.lua` the dark token colours (from
+Quarto's `a11y-dark`). Diagrams, SVG illustrations and QR codes keep their colours on a light
+backing. PDFs and generated videos are always light.
+
 ## Publishing
 
 The course workflow (`.github/workflows/build.yml`) builds on every push and deploys
