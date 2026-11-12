@@ -197,7 +197,7 @@ A semicolon too many: ...
 ````
 
 Inside `::: question`, every generated output appears on the first click and `::: answer` on the
-second; the answer is also copied into the speaker notes. `::: {.question answer=right}` puts the
+second (`{.output of=X click=2}` reveals an output together with the answer); the answer is also copied into the speaker notes. `::: {.question answer=right}` puts the
 answer in a column next to the rest (`split=55` sets the width of the left column). In the PDF all
 steps are shown at once.
 

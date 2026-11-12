@@ -60,7 +60,14 @@ function CodeBlock(el)
     return pandoc.Div(blocks)
   end
   if el.classes:includes("output") and el.attributes["of"] then
-    return lib.output(el.attributes["of"])
+    local out = lib.output(el.attributes["of"])
+    -- click=N: reveal with fragment N instead of the default (e.g. click=2 together with the answer)
+    local click = el.attributes["click"]
+    if click then
+      out.classes:insert("fragment")
+      out.attributes["fragment-index"] = click
+    end
+    return out
   end
   return nil
 end
