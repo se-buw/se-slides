@@ -108,6 +108,12 @@ $dark-paper: #ecebe6;        // behind QR codes
   .quarto-title-authors { justify-content: flex-start; }
 }
 
+// Section slides (# heading): optional subtitle, e.g. [Self-study]{.subtitle}
+.reveal .slides section.level1 .subtitle {
+  color: var(--course-muted);
+  font-size: 1.2em;
+}
+
 .reveal ul li::marker { color: var(--course-marker); }
 .reveal .slides section li { margin-bottom: 0.15em; }
 .reveal .slides section p { margin: 0.4em 0; }
