@@ -177,6 +177,21 @@ outputs are the same on every machine. Code is compiled with `-g`, so helpful Nu
 messages name local variables. Files in `broken/` and `warnings/` may use the lecture's other classes.
 jshell files start with the default imports of interactive jshell (`java.util.*`, `java.util.stream.*`, …).
 
+**No Java only on the slide.** Every Java listing comes from a file in `code/`, so the build compiles it:
+a fragment goes into a region of a small file, code that must not compile into `broken/`. The only
+exception is a general form with placeholders that cannot compile (`if (condition) { statements; }`),
+marked as such:
+
+````markdown
+```{.java .syntax}
+while (condition) {
+    statements;
+}
+```
+````
+
+An unmarked inline ```` ```java ```` block is a warning, and an error in `-Strict` (release) builds.
+
 ### Questions and surprising behaviour
 
 Slides that ask a question or show surprising behaviour reveal step by step; all other slides have no

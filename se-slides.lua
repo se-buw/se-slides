@@ -25,6 +25,9 @@ Question slides (code first, output on click 1, answer on click 2; answer also i
   :::
   Options on the question: answer=right (answer in a column next to the rest), split=55.
 
+Inline ```java blocks are reported (an error in strict builds): include the code from a file. Only a
+general form with placeholders that cannot compile stays inline, marked ```{.java .syntax}.
+
 Images need alt text and an entry in images/credits.yml; a credits slide is appended.
 COURSE_LENIENT=1: errors become warnings. COURSE_STRICT=1: fail on `::: todo` blocks.
 ]]
@@ -68,6 +71,14 @@ function CodeBlock(el)
       out.attributes["fragment-index"] = click
     end
     return out
+  end
+  -- Java on slides comes from code/, where the build compiles it. Inline Java is only allowed for general
+  -- forms with placeholders that cannot compile: ```{.java .syntax}
+  if el.classes:includes("java") and not el.classes:includes("syntax") and quarto.doc.is_format("revealjs") then
+    local msg = "[course] inline Java listing: put it in a file and include it, or mark a general form "
+      .. "{.java .syntax}: " .. el.text:gsub("%s+", " "):sub(1, 60)
+    -- strict (release) builds fail even when lenient is set
+    if strict then error(msg) else quarto.log.warning(msg) end
   end
   return nil
 end
