@@ -72,9 +72,9 @@ function CodeBlock(el)
     end
     return out
   end
-  -- Java on slides comes from code/, where the build compiles it. Inline Java is only allowed for general
+  -- Java on slides and in books comes from code/, where the build compiles it. Inline Java is only allowed for general
   -- forms with placeholders that cannot compile: ```{.java .syntax}
-  if el.classes:includes("java") and not el.classes:includes("syntax") and quarto.doc.is_format("revealjs") then
+  if el.classes:includes("java") and not el.classes:includes("syntax") then
     local msg = "[course] inline Java listing: put it in a file and include it, or mark a general form "
       .. "{.java .syntax}: " .. el.text:gsub("%s+", " "):sub(1, 60)
     -- strict (release) builds fail even when lenient is set

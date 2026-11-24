@@ -179,8 +179,8 @@ jshell files start with the default imports of interactive jshell (`java.util.*`
 
 **No Java only on the slide.** Every Java listing comes from a file in `code/`, so the build compiles it:
 a fragment goes into a region of a small file, code that must not compile into `broken/`. The only
-exception is a general form with placeholders that cannot compile (`if (condition) { statements; }`),
-marked as such:
+exception is a general form with placeholders that cannot compile (`if (condition) { statements; }`)
+or a quotation of a JDK declaration, marked as such:
 
 ````markdown
 ```{.java .syntax}
@@ -191,6 +191,7 @@ while (condition) {
 ````
 
 An unmarked inline ```` ```java ```` block is a warning, and an error in `-Strict` (release) builds.
+The same holds for book chapters, which use the same filter.
 
 ### Questions and surprising behaviour
 
